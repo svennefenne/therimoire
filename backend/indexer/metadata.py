@@ -27,11 +27,20 @@ def _read_audio_metadata(filepath: str) -> dict:
     """Read duration and embedded tags from an audio file (best-effort).
 
     Returns a dict with ``duration`` (float seconds), ``title``, ``artist``,
-    ``album`` (strings, blank when absent) and ``embedded_art`` (bool — whether
-    the file carries embedded cover art).  Never raises; on any failure it
-    returns zeroed/empty values so scanning continues.
+    ``album`` (strings, blank when absent), ``embedded_art`` (bool — whether
+    the file carries embedded cover art), and ``chapters`` (list, empty for
+    everything but M4A/M4B — see ``audio_chapters.read_chapters``).  Never
+    raises; on any failure it returns zeroed/empty values so scanning
+    continues.
     """
-    info = {"duration": 0.0, "title": "", "artist": "", "album": "", "embedded_art": False}
+    info = {
+        "duration": 0.0,
+        "title": "",
+        "artist": "",
+        "album": "",
+        "embedded_art": False,
+        "chapters": [],
+    }
     try:
         from mutagen import File as MutagenFile  # local import keeps startup light
 
@@ -54,6 +63,13 @@ def _read_audio_metadata(filepath: str) -> dict:
         info["embedded_art"] = _has_embedded_art(filepath)
     except Exception as exc:
         logger.debug(f"Could not read audio metadata for '{filepath}': {exc}")
+
+    try:
+        from .audio_chapters import read_chapters
+
+        info["chapters"] = read_chapters(filepath)
+    except Exception as exc:
+        logger.debug(f"Could not read chapters for '{filepath}': {exc}")
     return info
 
 

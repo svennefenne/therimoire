@@ -307,7 +307,14 @@ def _scan_audio(ctx: _ScanContext, walk_dir: Path) -> None:
             # Archives carry no tags/duration and no embedded art (issue #250):
             # register them as opaque, downloadable items with empty metadata.
             if arc_ext:
-                meta = {"duration": 0.0, "title": "", "artist": "", "album": "", "embedded_art": None}
+                meta = {
+                    "duration": 0.0,
+                    "title": "",
+                    "artist": "",
+                    "album": "",
+                    "embedded_art": None,
+                    "chapters": [],
+                }
                 has_artwork = False
             else:
                 meta = _read_audio_metadata(filepath)
@@ -326,6 +333,7 @@ def _scan_audio(ctx: _ScanContext, walk_dir: Path) -> None:
                 artist=meta["artist"],
                 album=meta["album"],
                 has_artwork=has_artwork,
+                chapters=meta["chapters"] or None,
             )
 
             session.add(track)

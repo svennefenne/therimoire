@@ -5,6 +5,10 @@ import {
   LuPause,
   LuSkipBack,
   LuSkipForward,
+  LuChevronLeft,
+  LuChevronRight,
+  LuRotateCcw,
+  LuRotateCw,
   LuRepeat1,
   LuListMusic,
   LuX,
@@ -14,6 +18,7 @@ import { mediaUrl } from '../../api'
 import { formatDuration } from '../../utils'
 import { useAudioPlayer } from '../../context/AudioPlayerContext'
 import AudioQueuePanel from './AudioQueuePanel'
+import SleepTimerMenu from './SleepTimerMenu'
 
 const PLAYER_HEIGHT = 72
 
@@ -39,6 +44,7 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
   const {
     audioRef,
     playRequested,
+    pendingSeek,
     queue,
     currentIndex,
     currentTrack,
@@ -50,11 +56,15 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
     setDuration,
     repeatOne,
     expanded,
+    hasChapters,
     togglePlay,
     toggleRepeat,
     next,
     prev,
+    nextChapter,
+    prevChapter,
     seek,
+    skipBy,
     clear,
     toggleExpanded,
   } = player
@@ -137,7 +147,16 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
           onPause={() => setIsPlaying(false)}
           onEnded={onEnded}
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+          onLoadedMetadata={(e) => {
+            setDuration(e.currentTarget.duration || 0)
+            // A chapter click (playTrackAt) may have requested a starting
+            // point before this src had metadata to seek within; apply it
+            // now that the element actually has a seekable duration.
+            if (pendingSeek.current != null) {
+              e.currentTarget.currentTime = pendingSeek.current
+              pendingSeek.current = null
+            }
+          }}
           data-testid="global-audio-element"
         />
 
@@ -200,6 +219,26 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
           <button onClick={prev} aria-label={t('audio.player.previous')} style={iconBtn()}>
             <LuSkipBack size={18} />
           </button>
+          {hasChapters && (
+            <button
+              onClick={() => skipBy(-15)}
+              aria-label={t('audio.player.skipBack15')}
+              title={t('audio.player.skipBack15')}
+              style={iconBtn()}
+            >
+              <LuRotateCcw size={16} />
+            </button>
+          )}
+          {hasChapters && (
+            <button
+              onClick={prevChapter}
+              aria-label={t('audio.player.previousChapter')}
+              title={t('audio.player.previousChapter')}
+              style={iconBtn()}
+            >
+              <LuChevronLeft size={18} />
+            </button>
+          )}
           <button
             onClick={togglePlay}
             aria-label={isPlaying ? t('audio.pause') : t('audio.play')}
@@ -214,6 +253,26 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
           >
             {isPlaying ? <LuPause size={18} /> : <LuPlay size={18} style={{ marginLeft: 2 }} />}
           </button>
+          {hasChapters && (
+            <button
+              onClick={nextChapter}
+              aria-label={t('audio.player.nextChapter')}
+              title={t('audio.player.nextChapter')}
+              style={iconBtn()}
+            >
+              <LuChevronRight size={18} />
+            </button>
+          )}
+          {hasChapters && (
+            <button
+              onClick={() => skipBy(15)}
+              aria-label={t('audio.player.skipForward15')}
+              title={t('audio.player.skipForward15')}
+              style={iconBtn()}
+            >
+              <LuRotateCw size={16} />
+            </button>
+          )}
           <button onClick={next} aria-label={t('audio.player.next')} style={iconBtn()}>
             <LuSkipForward size={18} />
           </button>
@@ -257,8 +316,9 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
           </span>
         </div>
 
-        {/* Queue + close */}
+        {/* Sleep timer + queue + close */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+          <SleepTimerMenu />
           <button
             onClick={toggleExpanded}
             aria-label={t('audio.player.toggleQueue')}
