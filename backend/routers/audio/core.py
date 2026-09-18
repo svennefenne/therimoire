@@ -23,6 +23,8 @@ _AUDIO_MIME = {
     ".flac": "audio/flac",
     ".wav": "audio/wav",
     ".m4a": "audio/mp4",
+    # Audiobook variant of the M4A/MP4 container — same codec, same MIME.
+    ".m4b": "audio/mp4",
     ".aac": "audio/aac",
 }
 
@@ -115,6 +117,9 @@ def get_audio(
         "variant_label": a.variant_label or "",
         "variant_main_id": variant_parent.id,
         "variants": [variants.serialize_variant(v) for v in siblings],
+        # Detail-only (see AudioDetailResponse) — the gallery list never needs
+        # a whole audiobook's chapter list on every row.
+        "chapters": a.chapters or [],
     }
 
 

@@ -1,12 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { LuArrowLeft, LuInfo, LuChevronDown, LuMusic, LuImagePlus } from 'react-icons/lu'
+import {
+  LuArrowLeft,
+  LuInfo,
+  LuChevronDown,
+  LuChevronLeft,
+  LuChevronRight,
+  LuRotateCcw,
+  LuRotateCw,
+  LuMusic,
+  LuImagePlus,
+} from 'react-icons/lu'
 import api, { imageSources, mediaUrl } from '../../api'
 import useSiblingNavigation from '../../hooks/useSiblingNavigation'
 import useArrowKeyNavigation from '../../hooks/useArrowKeyNavigation'
 import ImagePickerModal from '../images/ImagePickerModal'
 import { useAuth } from '../../context/AuthContext'
+import { useAudioPlayer } from '../../context/AudioPlayerContext'
 import Spinner from '../Spinner'
 import { formatSize, formatDuration } from '../../utils'
 import InlineTagEditor from '../maps/InlineTagEditor'
@@ -17,6 +28,7 @@ import DownloadVersionButton from '../DownloadVersionButton'
 import MetaRow from '../MetaRow'
 import TagSection from '../TagSection'
 import AudioPlayer from './AudioPlayer'
+import AudioChapterList from './AudioChapterList'
 import AddToSoundboardButton from './AddToSoundboardButton'
 import ArchivePlaceholder from '../media/ArchivePlaceholder'
 import SiblingNavButtons from '../media/SiblingNavButtons'
@@ -49,6 +61,7 @@ export default function AudioDetailView() {
   const [showCoverPicker, setShowCoverPicker] = useState(false)
   // Cache-buster so a replaced cover isn't served from the browser cache.
   const [coverVersion, setCoverVersion] = useState(0)
+  const { isCurrent, currentTime, playTrackAt, skipBy } = useAudioPlayer()
 
   const audioDetailPath = useCallback((id) => `/audio/${id}`, [])
   const {
@@ -90,6 +103,61 @@ export default function AudioDetailView() {
 
   const currentFolderTags = track.folder_tags ?? []
   const isArchive = isArchiveMedia(track)
+
+  // Chapter step buttons flanking the play control (see AudioChapterList for
+  // the full list). Computed from this track's own data rather than the
+  // player context's current-track chapters, since this page can be open on
+  // a track that isn't the one actually playing in the background — the
+  // buttons must always act on *this* track, starting it via playTrackAt if
+  // it isn't loaded yet.
+  const chapters = track.chapters || []
+  const hasChapters = chapters.length > 0
+  const isPlayingThis = isCurrent(audioId)
+  const activeChapterIdx = isPlayingThis
+    ? chapters.findIndex((c) => currentTime >= c.start && currentTime < c.end)
+    : -1
+  const chapterTrackRef = { id: audioId, title: track.title || track.filename, artwork: track.has_artwork }
+
+  const onPrevChapter = () => {
+    if (!hasChapters) return
+    const from = activeChapterIdx < 0 ? 0 : activeChapterIdx
+    // Mirrors the global player's prev(): more than ~3s into the current
+    // chapter restarts it, otherwise steps to the one before it.
+    if (isPlayingThis && currentTime - chapters[from].start > 3) {
+      playTrackAt(chapterTrackRef, chapters[from].start)
+    } else if (from > 0) {
+      playTrackAt(chapterTrackRef, chapters[from - 1].start)
+    } else {
+      playTrackAt(chapterTrackRef, chapters[0].start)
+    }
+  }
+
+  const onNextChapter = () => {
+    if (!hasChapters) return
+    const from = activeChapterIdx < 0 ? -1 : activeChapterIdx
+    if (from < chapters.length - 1) playTrackAt(chapterTrackRef, chapters[from + 1].start)
+  }
+
+  // Relative ±15s skip. Deliberately not context's raw skipBy while this
+  // track isn't the one actually playing — skipBy jumps whatever is live in
+  // the background, which would silently mangle a *different* track's
+  // position. Falls back to starting this one from the top instead.
+  const onSkipBack15 = () => (isPlayingThis ? skipBy(-15) : playTrackAt(chapterTrackRef, 0))
+  const onSkipForward15 = () => (isPlayingThis ? skipBy(15) : playTrackAt(chapterTrackRef, 0))
+
+  const chapterButtonStyle = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 30,
+    height: 30,
+    borderRadius: '50%',
+    border: '1px solid var(--border)',
+    background: 'var(--bg-card)',
+    color: 'var(--text-dim)',
+    cursor: 'pointer',
+    flexShrink: 0,
+  }
 
   const saveTrackTags = async (tags) => {
     await api.patch(`/audio/${audioId}`, { tags })
@@ -272,7 +340,29 @@ export default function AudioDetailView() {
                 {track.has_artwork ? t('audio.detail.changeCover') : t('audio.detail.setCover')}
               </button>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {hasChapters && (
+                <button
+                  type="button"
+                  onClick={onSkipBack15}
+                  aria-label={t('audio.player.skipBack15')}
+                  title={t('audio.player.skipBack15')}
+                  style={chapterButtonStyle}
+                >
+                  <LuRotateCcw size={14} />
+                </button>
+              )}
+              {hasChapters && (
+                <button
+                  type="button"
+                  onClick={onPrevChapter}
+                  aria-label={t('audio.player.previousChapter')}
+                  title={t('audio.player.previousChapter')}
+                  style={chapterButtonStyle}
+                >
+                  <LuChevronLeft size={16} />
+                </button>
+              )}
               <AudioPlayer
                 track={{
                   id: audioId,
@@ -282,6 +372,28 @@ export default function AudioDetailView() {
                 showPlayNext
                 size={56}
               />
+              {hasChapters && (
+                <button
+                  type="button"
+                  onClick={onNextChapter}
+                  aria-label={t('audio.player.nextChapter')}
+                  title={t('audio.player.nextChapter')}
+                  style={chapterButtonStyle}
+                >
+                  <LuChevronRight size={16} />
+                </button>
+              )}
+              {hasChapters && (
+                <button
+                  type="button"
+                  onClick={onSkipForward15}
+                  aria-label={t('audio.player.skipForward15')}
+                  title={t('audio.player.skipForward15')}
+                  style={chapterButtonStyle}
+                >
+                  <LuRotateCw size={14} />
+                </button>
+              )}
               <AddToSoundboardButton
                 track={{ id: audioId, title: track.title || track.filename }}
                 size={36}
@@ -316,6 +428,8 @@ export default function AudioDetailView() {
             <MetaRow label={t('audio.detail.duration')} value={formatDuration(track.duration)} />
           )}
           <MetaRow label={t('audio.detail.fileSize')} value={formatSize(track.file_size)} />
+
+          <AudioChapterList track={track} />
 
           {/* Folder tags */}
           {folder &&

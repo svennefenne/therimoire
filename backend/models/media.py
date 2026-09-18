@@ -110,6 +110,12 @@ class Audio(Base):
     title = Column(String(500), default="")
     artist = Column(String(500), default="")
     album = Column(String(500), default="")
+    # Chapter markers for audiobook-style M4A/M4B files, as a JSON list of
+    # {"title", "start", "end"} (seconds). NULL/empty for every other format
+    # and for an M4A/M4B with no embedded chapters. Read via ffmpeg's
+    # ffmetadata export — see indexer/audio_chapters.py — since mutagen has
+    # no API for the MP4 chapter box.
+    chapters = Column(JSON, nullable=True)
     # True when folder cover art or embedded album art is available.
     has_artwork = Column(Boolean, default=False)
     # Bare filename of a cover set through the UI, under DATA_PATH/audio_covers/.

@@ -2,6 +2,12 @@
 from typing import Optional
 from pydantic import BaseModel, field_validator
 
+
+class AudioChapter(BaseModel):
+    title: str
+    start: float
+    end: float
+
 from ...services import tag_service
 from .._bulk_schemas import bulk_update_model
 from .._variant_schemas import VariantCountMixin, VariantFamilyMixin
@@ -68,10 +74,16 @@ class AudioListResponse(BaseModel):
 
 
 class AudioDetailResponse(AudioOut, VariantFamilyMixin):
-    """`GET /audio/{id}` — the serialized track plus its folder context."""
+    """`GET /audio/{id}` — the serialized track plus its folder context.
+
+    ``chapters`` is only surfaced here, not on the gallery list response —
+    an audiobook can carry dozens of entries, which is unwanted weight on
+    every row of the grid for a field only the detail/player view uses.
+    """
 
     folder_path: str
     folder_tags: list[str]
+    chapters: list[AudioChapter] = []
 
 
 class FolderTagsOut(BaseModel):
