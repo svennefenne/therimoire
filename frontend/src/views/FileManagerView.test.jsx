@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import FileManagerView from './FileManagerView'
 import { files as filesApi } from '../api'
@@ -97,6 +97,17 @@ const file = (name, parent = 'books', extra = {}) => ({
 
 function browseResult(entries, path = 'books', extra = {}) {
   return { path, parent: '', writable: true, entries, singletons_taken: {}, ...extra }
+}
+
+// Move the primary pane off the library root by opening a folder in it. The
+// root offers no upload or new-folder button — every write API refuses the
+// empty path it is represented by — so a case about those actions has to stand
+// somewhere they can work. The pane tracks its own path, so this navigates for
+// real rather than faking the listing's `path`.
+async function openFolderInPane(name = 'core') {
+  const pane = await screen.findByTestId('file-pane-primary')
+  fireEvent.doubleClick(within(pane).getByTestId(`entry-${name}`))
+  await screen.findByTestId('upload-primary')
 }
 
 beforeEach(() => {
@@ -295,27 +306,33 @@ describe('FileManagerView', () => {
   describe('the pane toolbar', () => {
     it('uploads files into the folder the pane is showing', async () => {
       render(<FileManagerView />)
+      await openFolderInPane()
       await userEvent.click(await screen.findByTestId('upload-primary'))
       await userEvent.click(await screen.findByTestId('upload-files-primary'))
       const f = new File(['x'], 'a.pdf', { type: 'application/pdf' })
       fireEvent.change(screen.getByTestId('file-input'), { target: { files: [f] } })
 
-      // The pane is anchored on the library root, so that is where it lands.
-      await waitFor(() => expect(uploadQueue.enqueue).toHaveBeenCalledWith(expect.any(Array), ''))
+      // The folder the pane is showing, not a guess and not the root.
+      await waitFor(() =>
+        expect(uploadQueue.enqueue).toHaveBeenCalledWith(expect.any(Array), 'books/core')
+      )
     })
 
     it('uploads a folder into the folder the pane is showing', async () => {
       render(<FileManagerView />)
+      await openFolderInPane()
       await userEvent.click(await screen.findByTestId('upload-primary'))
       await userEvent.click(await screen.findByTestId('upload-folder-primary'))
       const f = new File(['x'], 'a.pdf', { type: 'application/pdf' })
       fireEvent.change(screen.getByTestId('folder-input'), { target: { files: [f] } })
-      await waitFor(() => expect(uploadQueue.enqueue).toHaveBeenCalledWith(expect.any(Array), ''))
+      await waitFor(() =>
+        expect(uploadQueue.enqueue).toHaveBeenCalledWith(expect.any(Array), 'books/core')
+      )
     })
 
     it('keeps the two upload choices behind one button', async () => {
       render(<FileManagerView />)
-      await screen.findByTestId('file-pane-primary')
+      await openFolderInPane()
       // Closed, the toolbar spends one button's width on the verb rather than
       // two on its variants.
       expect(screen.queryByTestId('upload-files-primary')).not.toBeInTheDocument()
@@ -385,8 +402,9 @@ describe('FileManagerView', () => {
   it('creates a folder in the pane\u2019s own folder from the breadcrumb button', async () => {
     // The right-click route needs a folder to click on, which an empty folder
     // does not have — so the pane carries its own "new folder here" button.
-    filesApi.createFolder.mockResolvedValue({ path: 'books/New' })
+    filesApi.createFolder.mockResolvedValue({ path: 'books/core/New' })
     render(<FileManagerView />)
+    await openFolderInPane()
 
     await userEvent.click(await screen.findByTestId('new-folder-primary'))
     const input = await screen.findByLabelText('files.folderName')
@@ -394,10 +412,21 @@ describe('FileManagerView', () => {
     await userEvent.click(screen.getByRole('button', { name: 'files.create' }))
 
     await waitFor(() =>
-      // The pane is anchored on the library root, so that is where the folder
-      // lands — the button always means "here", whatever "here" happens to be.
-      expect(filesApi.createFolder).toHaveBeenCalledWith('', 'Homebrew', expect.anything())
+      // The button always means "here" — the folder the pane is showing.
+      expect(filesApi.createFolder).toHaveBeenCalledWith(
+        'books/core',
+        'Homebrew',
+        expect.anything()
+      )
     )
+  })
+
+  it('hides the new-folder button at the library root', async () => {
+    // The root already holds the collections, and `create_folder` refuses the
+    // empty parent path, so the button would only ever produce an error.
+    render(<FileManagerView />)
+    await screen.findByTestId('file-pane-primary')
+    expect(screen.queryByTestId('new-folder-primary')).not.toBeInTheDocument()
   })
 
   it('hides the new-folder button on a read-only mount', async () => {
@@ -1022,7 +1051,8 @@ describe('FileManagerView', () => {
 
   it('uploads files dragged in from the desktop', async () => {
     render(<FileManagerView />)
-    const pane = await screen.findByTestId('file-pane-primary')
+    await openFolderInPane()
+    const pane = screen.getByTestId('file-pane-primary')
 
     const dropped = [new File(['x'], 'new.pdf', { type: 'application/pdf' })]
     fireEvent.drop(pane, {
@@ -1038,8 +1068,23 @@ describe('FileManagerView', () => {
     await waitFor(() => expect(uploadQueue.enqueue).toHaveBeenCalled())
     const [entries, destination] = uploadQueue.enqueue.mock.calls[0]
     expect(entries[0].file.name).toBe('new.pdf')
-    expect(destination).toBe('')
+    expect(destination).toBe('books/core')
     expect(filesApi.move).not.toHaveBeenCalled()
+  })
+
+  it('ignores a desktop drop on the library root, where an upload cannot land', async () => {
+    // Nothing is queued rather than a request being sent to fail: the root is
+    // not a folder an upload can target.
+    render(<FileManagerView />)
+    const pane = await screen.findByTestId('file-pane-primary')
+    fireEvent.drop(pane, {
+      dataTransfer: {
+        types: ['Files'],
+        files: [new File(['x'], 'new.pdf', { type: 'application/pdf' })],
+        getData: () => '',
+      },
+    })
+    expect(uploadQueue.enqueue).not.toHaveBeenCalled()
   })
 
   it('queues files chosen from the picker into the right-clicked folder', async () => {
@@ -1186,6 +1231,121 @@ describe('FileManagerView', () => {
     // A shortcut is no way to advertise shortcuts, so there is a button too.
     await userEvent.click(screen.getByTestId('shortcuts-button'))
     expect(await screen.findByText('files.shortcutPreview')).toBeInTheDocument()
+  })
+
+  // Issue #460: every dialog these shortcuts open used to leave focus on
+  // <body> when it closed, so the next keystroke did nothing and the user had
+  // to click back into the list — losing their place in a long library.
+  it('returns focus to the list when the rename dialog is cancelled', async () => {
+    render(<FileManagerView />)
+    const list = await cursorOn('core')
+
+    fireEvent.keyDown(list, { key: 'Enter' })
+    await screen.findByLabelText('files.newName')
+    await userEvent.click(screen.getByRole('button', { name: 'common.cancel' }))
+
+    await waitFor(() => expect(document.activeElement).toBe(list))
+  })
+
+  it('returns focus to the list after a rename goes through', async () => {
+    filesApi.rename.mockResolvedValue({ from: 'books/core', to: 'books/rulebooks' })
+    render(<FileManagerView />)
+    const list = await cursorOn('core')
+
+    fireEvent.keyDown(list, { key: 'Enter' })
+    const field = await screen.findByLabelText('files.newName')
+    await userEvent.clear(field)
+    await userEvent.type(field, 'rulebooks')
+    await userEvent.click(screen.getByRole('button', { name: 'files.rename' }))
+
+    await waitFor(() => expect(filesApi.rename).toHaveBeenCalled())
+    await waitFor(() => expect(document.activeElement).toBe(list))
+  })
+
+  it('leaves the list holding the keys when the preview is closed', async () => {
+    // The preview does not move focus into itself — it is dismissed from the
+    // `window` and relies on the pane's `[role="dialog"]` guard to stop the
+    // arrows reaching the tree behind it. So this pins the end state rather
+    // than a hand-back: whatever route the dialog took, the list must be
+    // drivable the moment it is gone.
+    filesApi.record.mockResolvedValue({ id: 'rec-1', title: 'Bestiary', page_count: 12 })
+    render(<FileManagerView />)
+    const list = await cursorOn('bestiary.pdf')
+
+    fireEvent.keyDown(list, { key: ' ' })
+    await screen.findByTestId('preview-page')
+    // Drop focus first, so passing means the close actually put it back rather
+    // than it never having left. (The preview does not steal focus itself, so
+    // without this the assertion would hold with no refocus at all.)
+    act(() => list.blur())
+    expect(document.activeElement).not.toBe(list)
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    await waitFor(() => expect(document.activeElement).toBe(list))
+  })
+
+  it('returns focus and keeps a place in the list after a delete', async () => {
+    // The sequential-edit case from issue #460: delete a file, and both the
+    // keys and the cursor must stay where the work is, not reset to the top.
+    filesApi.folderContents.mockResolvedValue({ has_content: false })
+    filesApi.deleteEntry.mockResolvedValue({
+      path: 'books/bestiary.pdf',
+      files: 1,
+      records: 1,
+      files_deleted: true,
+    })
+    render(<FileManagerView />)
+    const list = await cursorOn('bestiary.pdf')
+
+    // Only now does the deleted row leave the listing, so the refresh after the
+    // delete reads back a tree without it.
+    filesApi.browse.mockImplementation((path) =>
+      Promise.resolve(browseResult([folder('core', path || 'books')], path))
+    )
+
+    fireEvent.keyDown(list, { key: 'Delete' })
+    await screen.findByRole('dialog')
+    await userEvent.click(screen.getByTestId('delete-files-toggle'))
+    await userEvent.click(screen.getByText('files.deletePermanently'))
+
+    await waitFor(() => expect(filesApi.deleteEntry).toHaveBeenCalled())
+    await waitFor(() => expect(document.activeElement).toBe(list))
+    // The cursor fell back to the surviving neighbour rather than being dropped,
+    // so the next arrow key carries on from there.
+    await waitFor(() =>
+      expect(list.getAttribute('aria-activedescendant')).toContain(encodeURIComponent('books/core'))
+    )
+  })
+
+  it('returns focus to the list after the metadata editor saves', async () => {
+    // Saving is the usual way out of that dialog, and it closes by its own
+    // route rather than through onClose — so it needs the hand-back too.
+    filesApi.record.mockResolvedValue({ id: 'rec-1', title: 'Bestiary' })
+    render(<FileManagerView />)
+    const list = await cursorOn('bestiary.pdf')
+
+    fireEvent.keyDown(list, { key: 'i', ctrlKey: true })
+    await screen.findByTestId('metadata-modal')
+    await userEvent.click(screen.getByText('save-metadata'))
+
+    await waitFor(() => expect(screen.queryByTestId('metadata-modal')).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(list))
+  })
+
+  it('returns focus to the pane that opened the dialog when split', async () => {
+    // With two panes on screen, guessing wrong sends the next keystroke to the
+    // wrong tree — the same class of bug as acting on the wrong file.
+    render(<FileManagerView />)
+    await pinRight()
+
+    await cursorOn('bestiary.pdf', 'primary')
+    const secondList = await cursorOn('core', 'secondary')
+
+    fireEvent.keyDown(secondList, { key: 'Enter' })
+    await screen.findByLabelText('files.newName')
+    await userEvent.click(screen.getByRole('button', { name: 'common.cancel' }))
+
+    await waitFor(() => expect(document.activeElement).toBe(secondList))
   })
 
   it('sends keys only to the focused pane when the view is split', async () => {

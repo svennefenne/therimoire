@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   LuChevronRight,
@@ -67,24 +67,27 @@ export function edgeScrollStep(box, clientY, zone = SCROLL_ZONE_PX, step = SCROL
  * in this tree, and rendering them all — each with drag handlers — would stall
  * the main thread on every expand.
  */
-export default function FilePane({
-  pane,
-  side,
-  onDropPaths,
-  onDropFiles,
-  onOpenContext,
-  onClose,
-  onNewFolder,
-  onPickFiles,
-  onScaffold,
-  onPreview,
-  onRename,
-  onDelete,
-  onOpenMetadata,
-  onShowShortcuts,
-  compact = false,
-  fill = false,
-}) {
+const FilePane = forwardRef(function FilePane(
+  {
+    pane,
+    side,
+    onDropPaths,
+    onDropFiles,
+    onOpenContext,
+    onClose,
+    onNewFolder,
+    onPickFiles,
+    onScaffold,
+    onPreview,
+    onRename,
+    onDelete,
+    onOpenMetadata,
+    onShowShortcuts,
+    compact = false,
+    fill = false,
+  },
+  ref
+) {
   const { t } = useTranslation()
   const [dragOver, setDragOver] = useState(null) // entry path being hovered, or '__pane__'
   const [dragging, setDragging] = useState(false)
@@ -99,6 +102,15 @@ export default function FilePane({
   })
 
   const segments = pane.path ? pane.path.split('/') : []
+
+  // The library root holds the collections (books/, maps/, …) and nothing else.
+  // Every write API resolves its target through `safe_join`, which rejects the
+  // empty path the root is represented by, so uploading or creating a folder
+  // here can only ever fail — and a file dropped at the root would sit outside
+  // any collection, where the scanner would never index it. Offering the
+  // actions and letting the API refuse them is how this surfaced as a bare
+  // "Path is empty" on a perfectly good PDF.
+  const canWriteHere = pane.writable && !!pane.path
 
   // Any drag ending anywhere clears this pane's affordances: a drop handled by
   // the *other* pane never fires this one's onDrop, and the highlight would
@@ -142,9 +154,12 @@ export default function FilePane({
       setDragging(false)
       clearTimeout(springTimer.current)
 
-      // Files from the desktop are an upload, not a move.
+      // Files from the desktop are an upload, not a move. The root is not a
+      // destination an upload can use (see `canWriteHere`), and the same drop
+      // onto a folder row carries that row's path, so this only ever discards
+      // the gesture that had nowhere to land.
       if (isFileDrag(e) && e.dataTransfer.files?.length) {
-        onDropFiles?.(e.dataTransfer.files, destination)
+        if (destination) onDropFiles?.(e.dataTransfer.files, destination)
         return
       }
       const payload = readDrag(e)
@@ -264,6 +279,20 @@ export default function FilePane({
     if (pane.cursor == null) return
     scrollRowIntoView(indexOfPath(rows, pane.cursor))
   }, [pane.cursor, rows, scrollRowIntoView])
+
+  // Give the list back the keys after a dialog closes (issue #460). Exposed as a
+  // handle rather than driven by a prop because refocusing is an *event* — it
+  // happens once, when a modal closes — and a boolean prop would have to be set
+  // and unset around it. `preventScroll` because the cursor effect above already
+  // puts the right row on screen; letting the browser scroll to the focused
+  // container as well would jump the list back to wherever it is anchored.
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => scrollRef.current?.focus({ preventScroll: true }),
+    }),
+    [scrollRef]
+  )
 
   /** Move the cursor to a row index, if it exists. */
   const moveTo = useCallback(
@@ -500,7 +529,7 @@ export default function FilePane({
               navigated into the folder you meant — and in an empty folder there
               is no row to click at all. Hidden on a read-only mount, where the
               API would refuse them. */}
-          {onNewFolder && pane.writable && (
+          {onNewFolder && canWriteHere && (
             <button
               onClick={() => onNewFolder(pane.path)}
               style={actionBtnStyle}
@@ -513,7 +542,7 @@ export default function FilePane({
           {/* One button rather than two: uploading files and uploading a folder
               are one verb with a variant, and two buttons would cost twice the
               toolbar width to say so. */}
-          {onPickFiles && pane.writable && (
+          {onPickFiles && canWriteHere && (
             <ToolbarMenuButton
               label={t('files.upload')}
               icon={<LuUpload size={12} />}
@@ -724,7 +753,9 @@ export default function FilePane({
       </div>
     </div>
   )
-}
+})
+
+export default FilePane
 
 // `aria-activedescendant` needs a real element id, and a path is not one — it
 // carries slashes, spaces and whatever else a filename holds. Scoped by side so
