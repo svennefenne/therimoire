@@ -27,22 +27,55 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt \
     && rm -rf /install/lib/python3.12/site-packages/pymupdf/mupdf-devel \
     && find /install -name '__pycache__' -type d -prune -exec rm -rf {} +
 
-# Stage 3: Build a decode-only ffmpeg for animated-map thumbnails
+# Stage 3: Build a purpose-restricted ffmpeg for animated-map thumbnails and
+# mp3 -> chaptered m4b audiobook conversion
 #
 # Animated battlemaps (.webm/.mp4) need exactly one decoded frame, which Pillow
-# then resizes like any other thumbnail. Every off-the-shelf way to get a decoder
-# is wildly out of proportion to that: imageio-ffmpeg bundles a 76 MB static
-# binary, `apt-get install ffmpeg` pulls 430 MB across 202 packages, and PyAV
-# lands at 115 MB. Almost all of it is *encoders* (x265 alone is 18 MB) plus a
-# codec/X11 dependency chain this image spends real effort elsewhere avoiding.
+# then resizes like any other thumbnail, and converting an mp3 audiobook to a
+# chaptered .m4b needs an mp3 decoder, the native AAC encoder, and the mp4/m4b
+# muxer. Every off-the-shelf way to get any of this is wildly out of proportion
+# to what it's used for: imageio-ffmpeg bundles a 76 MB static binary,
+# `apt-get install ffmpeg` pulls 430 MB across 202 packages, and PyAV lands at
+# 115 MB — almost all of it codecs and a codec/X11 dependency chain this image
+# spends real effort elsewhere avoiding.
 #
-# Configuring ffmpeg down to the decoders a battlemap can plausibly use gives a
-# ~4.7 MB binary that links only libc/libm/libz — all already in the runtime —
-# so it adds no packages and no shared libraries at all.
+# Configuring ffmpeg down to exactly the decoders/encoders/muxers those two
+# features can plausibly use gives a ~6 MB binary that still links only
+# libc/libm/libz — all already in the runtime — so it adds no packages and no
+# shared libraries at all. The two features share one binary rather than each
+# getting their own build: they overlap on zlib/swscale/swresample already,
+# and a second copy of the same object files would just be dead weight.
 #
 # --enable-zlib is not optional despite nothing here compressing video: the PNG
 # *encoder* needs it, and without it the build silently produces a binary that
 # demuxes and decodes correctly, then dies with "Unknown encoder 'png'".
+#
+# --enable-swresample and the aformat/aresample filters exist for exactly one
+# reason: joining several mp3s whose sample rate or channel count don't quite
+# agree (a common real-world case for audiobooks ripped chapter-by-chapter
+# over time) needs the concat filter's inputs normalised first, or ffmpeg
+# refuses to concatenate them at all.
+#
+# The muxer is named "ipod", not "mp4" — cosmetic-looking, but load-bearing:
+# ffmpeg's own extension-to-muxer table only maps ".m4b" to the "ipod" muxer
+# (mp4's own extensions field is just "mp4"), so naming the wrong one here
+# would silently produce a file ffmpeg itself can't auto-detect an output
+# format for from a .m4b filename. Enabling it also registers the plain "mov"
+# muxer for free (same object file, no extra size) — harmless, and not worth
+# fighting configure's dependency resolution to avoid.
+#
+# The "ffmetadata" *muxer* (as opposed to the demuxer above, which feeds our
+# own hand-written chapter list into the encode) closes a second, separate
+# gap: indexer/audio_chapters.py reads chapters back out of any M4A/M4B by
+# shelling out to `ffmpeg -i <file> -f ffmetadata -`, i.e. dumping the
+# container's chapter atoms as ffmetadata text rather than parsing the MP4
+# box structure by hand (mutagen has no API for it). That dump target is the
+# muxer, not the demuxer, and until now it was never enabled, so this build
+# could WRITE working chapters into a freshly-converted .m4b but not READ
+# them back out again — every audiobook converted in this image would land
+# in the library with an empty chapter list even though the file itself was
+# fine. Enabling it costs nothing extra (ffmetadata's muxer and demuxer are
+# the same small object file) and makes both directions symmetric.
 FROM debian:bookworm-slim AS ffmpeg-builder
 
 ARG FFMPEG_VERSION=7.0.2
@@ -64,7 +97,27 @@ RUN curl -fsSL "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
 
 # vp8/vp9 cover .webm, h264/hevc cover .mp4, av1 is the emerging third; mjpeg and
 # rawvideo are cheap insurance for oddly-muxed exports. matroska and mov are the
-# only two containers those ship in.
+# only two containers those ship in. mp3/mpegaudio/ffmetadata/ipod and the aac
+# encoder are audiobook conversion's half — see the stage comment above. The
+# ffmetadata *muxer* (added alongside its demuxer) is what lets the indexer
+# read chapters back out of any M4A/M4B, ours or a pre-existing one.
+#
+# The aac *decoder*, the silencedetect filter, the null muxer, and pcm_s16le/
+# wav round out a third feature: services/audiobook_chapter_detect.py listens
+# for spoken "Chapter N" markers in an audiobook that has no chapter data of
+# any kind (see that module's docstring). Until now this build could read an
+# M4A/M4B's container-level metadata but never decode its actual audio —
+# reasonable when nothing needed to listen to the file, but detection has to:
+# silencedetect finds the pauses that plausibly mark a chapter break, reported
+# through stderr against a discarded `-f null` output (the muxer that writes
+# nothing at all — needed here since this build has no real "junk" format to
+# point a real-output-discarding pass at otherwise), and each candidate is
+# then decoded to a short mono 16kHz PCM WAV snippet (pcm_s16le + the wav
+# muxer) for an offline speech-to-text pass (see the vosk-model stage below).
+# Same reasoning as everything else in this build: cheap to add (aac's
+# decoder shares most of its tables with the encoder already compiled in) and
+# keeps this a single self-contained binary rather than reaching for a
+# second, general-purpose ffmpeg.
 RUN ./configure \
         --disable-everything \
         --disable-autodetect \
@@ -75,15 +128,41 @@ RUN ./configure \
         --enable-ffmpeg \
         --enable-zlib \
         --enable-swscale \
-        --enable-decoder=vp8,vp9,h264,hevc,av1,mjpeg,rawvideo \
-        --enable-demuxer=matroska,mov \
-        --enable-parser=vp8,vp9,h264,hevc,av1,mjpeg \
-        --enable-muxer=image2,image2pipe \
-        --enable-encoder=png,mjpeg \
+        --enable-swresample \
+        --enable-decoder=vp8,vp9,h264,hevc,av1,mjpeg,rawvideo,mp3,aac \
+        --enable-demuxer=matroska,mov,mp3,ffmetadata \
+        --enable-parser=vp8,vp9,h264,hevc,av1,mjpeg,mpegaudio,aac \
+        --enable-muxer=image2,image2pipe,ipod,ffmetadata,wav,null \
+        --enable-encoder=png,mjpeg,aac,pcm_s16le \
         --enable-protocol=file,pipe \
-        --enable-filter=scale,null \
+        --enable-filter=scale,null,concat,aformat,aresample,silencedetect \
     && make -j"$(nproc)" \
     && strip ffmpeg
+
+# Stage 3b: Vosk speech-recognition model for spoken chapter-marker detection
+#
+# services/audiobook_chapter_detect.py only ever transcribes a few seconds of
+# audio at a time, around a detected silence gap — never the whole book — so
+# a small, CPU-only model is enough. The "small" English model (~40 MB
+# compressed) trades some accuracy on unusual phrasing for a fraction of the
+# footprint of a general-purpose model like Whisper, which would need
+# PyTorch or CTranslate2 on top of a larger model just to run on CPU.
+# Downloaded once at build time and baked into the image so a freshly
+# started container has no network dependency at runtime, same as the
+# ffmpeg binary above.
+FROM debian:bookworm-slim AS vosk-model
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /model
+RUN curl -fsSL -o model.zip \
+        https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip \
+    && unzip -q model.zip \
+    && rm model.zip
 
 # Stage 4: Runtime base shared by both variants (no build toolchain)
 FROM python:3.12-slim AS runtime-base
@@ -96,10 +175,20 @@ WORKDIR /app
 # Bring in the pre-built Python packages from the builder stage.
 COPY --from=backend-builder /install /usr/local
 
-# The decode-only ffmpeg used for animated-map thumbnails. Path matches
-# FFMPEG_BINARY in backend/indexer/video_frames.py; that module degrades to "no
-# thumbnail" if it is ever absent, so this stays a single self-contained file.
+# The purpose-built ffmpeg used for animated-map thumbnails and mp3 -> m4b
+# audiobook conversion. Path matches FFMPEG_BINARY in both
+# backend/indexer/video_frames.py and backend/services/audiobook_convert.py;
+# both modules degrade gracefully if it is ever absent (no thumbnail; a clear
+# "rebuild the image" error on conversion), so this stays a single
+# self-contained file rather than something either feature hard-depends on.
 COPY --from=ffmpeg-builder /ffmpeg/ffmpeg /usr/local/bin/ffmpeg
+
+# Bundled Vosk model for spoken chapter-marker detection (see the vosk-model
+# stage comment above). Path matches VOSK_MODEL_PATH in
+# backend/services/audiobook_chapter_detect.py; that module degrades to a
+# clear "rebuild the image" error if it's ever absent, same as the ffmpeg
+# binary above.
+COPY --from=vosk-model /model/vosk-model-small-en-us-0.15 /app/models/vosk-model-small-en-us-0.15
 
 COPY backend/ ./backend/
 COPY alembic.ini ./alembic.ini
