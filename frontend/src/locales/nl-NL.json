@@ -1048,6 +1048,7 @@
       "viewModeMaps": "Kaarten",
       "viewModeTokens": "Tokens",
       "viewModeAudio": "Audio",
+      "viewModeAudiobooks": "Luisterboeken",
       "viewModeModels": "Models",
       "recentLimit": "Recent geopende boeken",
       "recentLimitHint": "Hoeveel recent geopende boeken onthouden moeten worden (0–{{max}}). Stel in op 0 om de sectie te verbergen."
@@ -2367,6 +2368,42 @@
     "playFolder": "{{folder}} afspelen",
     "playGroup": "Audio afspelen",
     "playAll": "Alles afspelen"
+  },
+  "audiobooks": {
+    "detail": {
+      "continueFrom": "Verdergaan vanaf {{time}}",
+      "markNotStarted": "Markeren als niet begonnen",
+      "chaptersCount_one": "{{count}} hoofdstuk",
+      "chaptersCount_other": "{{count}} hoofdstukken",
+      "chapterNumber": "Hoofdstuk {{number}}",
+      "progressOfChapter": "Voortgang: {{percent}}% van {{chapter}}",
+      "progressCompact": "{{percent}}% · {{chapter}}",
+      "resetChapterProgress": "Hoofdstukvoortgang resetten"
+    },
+    "metadata": {
+      "detectChaptersTitle": "Hoofdstukken detecteren",
+      "detectChaptersHint": "Luistert naar gesproken markeringen zoals \"Hoofdstuk een\", \"Hoofdstuk twee\", … in de audio en zet ze om in echte hoofdstukken. Handig voor een bestand zonder hoofdstukgegevens.",
+      "detectChaptersButton": "Hoofdstukken detecteren",
+      "detecting": "Scannen…",
+      "detectChaptersScanning": "Scannen… {{done}}/{{total}}",
+      "detectChaptersAutoApply": "Automatisch toepassen na afloop",
+      "detectChaptersApplied": "Hoofdstukken gedetecteerd en opgeslagen.",
+      "detectChaptersNoneFound": "Er zijn geen gesproken hoofdstukmarkeringen gevonden. Je kunt hieronder nog steeds handmatig hoofdstukken toevoegen.",
+      "detectChaptersDiscard": "Verwerpen",
+      "detectChaptersPreview": "Voorbeeld vanaf hier",
+      "detectChaptersRemove": "Dit hoofdstuk verwijderen",
+      "detectChaptersAddRow": "+ Hoofdstuk toevoegen",
+      "detectChaptersTitlePlaceholder": "Hoofdstuktitel",
+      "detectChaptersShowAdvanced": "Geavanceerde opties",
+      "detectChaptersHideAdvanced": "Geavanceerde opties verbergen",
+      "detectChaptersNoiseDbLabel": "Ruisdrempel (dB)",
+      "detectChaptersMinSilenceLabel": "Min. pauze (s)",
+      "detectChaptersAdvancedHint": "Een geproduceerd luisterboek met muziek of geluidseffecten tussen hoofdstukken heeft mogelijk een minder negatieve ruisdrempel nodig (bijv. -20) of een kortere minimale pauze om overgangen te herkennen die nooit volledig stil worden.",
+      "detectChaptersApplyButton_one": "{{count}} hoofdstuk toepassen",
+      "detectChaptersApplyButton_other": "{{count}} hoofdstukken toepassen",
+      "detectChaptersFailed": "Hoofdstukdetectie mislukt.",
+      "detectChaptersCancelled": "Hoofdstukdetectie is geannuleerd."
+    }
   },
   "soundboard": {
     "title": "Soundboard",

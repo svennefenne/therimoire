@@ -1048,6 +1048,7 @@
       "viewModeMaps": "Karten",
       "viewModeTokens": "Tokens",
       "viewModeAudio": "Audio",
+      "viewModeAudiobooks": "Hörbücher",
       "viewModeModels": "Models",
       "recentLimit": "Zuletzt geöffnete Bücher",
       "recentLimitHint": "Wie viele zuletzt geöffnete Bücher gemerkt werden (0–{{max}}). Auf 0 setzen, um den Bereich auszublenden."
@@ -2367,6 +2368,42 @@
     "playFolder": "{{folder}} abspielen",
     "playGroup": "Audio abspielen",
     "playAll": "Alle abspielen"
+  },
+  "audiobooks": {
+    "detail": {
+      "continueFrom": "Fortsetzen ab {{time}}",
+      "markNotStarted": "Als nicht begonnen markieren",
+      "chaptersCount_one": "{{count}} Kapitel",
+      "chaptersCount_other": "{{count}} Kapitel",
+      "chapterNumber": "Kapitel {{number}}",
+      "progressOfChapter": "Fortschritt: {{percent}}% von {{chapter}}",
+      "progressCompact": "{{percent}}% · {{chapter}}",
+      "resetChapterProgress": "Kapitelfortschritt zurücksetzen"
+    },
+    "metadata": {
+      "detectChaptersTitle": "Kapitel erkennen",
+      "detectChaptersHint": "Erkennt gesprochene Markierungen wie „Kapitel eins“, „Kapitel zwei“ … in der Audiodatei und wandelt sie in echte Kapitel um. Nützlich für Dateien ohne Kapiteldaten.",
+      "detectChaptersButton": "Kapitel erkennen",
+      "detecting": "Wird gescannt …",
+      "detectChaptersScanning": "Wird gescannt … {{done}}/{{total}}",
+      "detectChaptersAutoApply": "Nach Abschluss automatisch anwenden",
+      "detectChaptersApplied": "Kapitel erkannt und gespeichert.",
+      "detectChaptersNoneFound": "Es wurden keine gesprochenen Kapitelmarkierungen gefunden. Du kannst unten weiterhin Kapitel manuell hinzufügen.",
+      "detectChaptersDiscard": "Verwerfen",
+      "detectChaptersPreview": "Ab hier anhören",
+      "detectChaptersRemove": "Dieses Kapitel entfernen",
+      "detectChaptersAddRow": "+ Kapitel hinzufügen",
+      "detectChaptersTitlePlaceholder": "Kapiteltitel",
+      "detectChaptersShowAdvanced": "Erweiterte Optionen",
+      "detectChaptersHideAdvanced": "Erweiterte Optionen ausblenden",
+      "detectChaptersNoiseDbLabel": "Rauschgrenze (dB)",
+      "detectChaptersMinSilenceLabel": "Min. Pause (s)",
+      "detectChaptersAdvancedHint": "Bei produzierten Hörbüchern mit Musik oder Soundeffekten zwischen den Kapiteln kann eine weniger negative Rauschgrenze (z. B. -20) oder eine kürzere Mindestpause helfen, Übergänge zu erkennen, die nie vollständig still sind.",
+      "detectChaptersApplyButton_one": "{{count}} Kapitel anwenden",
+      "detectChaptersApplyButton_other": "{{count}} Kapitel anwenden",
+      "detectChaptersFailed": "Kapitelerkennung fehlgeschlagen.",
+      "detectChaptersCancelled": "Kapitelerkennung wurde abgebrochen."
+    }
   },
   "soundboard": {
     "title": "Soundboard",

@@ -1048,6 +1048,7 @@
       "viewModeMaps": "Mapas",
       "viewModeTokens": "Tokens",
       "viewModeAudio": "Áudio",
+      "viewModeAudiobooks": "Audiolivros",
       "viewModeModels": "Models",
       "recentLimit": "Livros abertos recentemente",
       "recentLimitHint": "Quantos livros abertos recentemente memorizar (0–{{max}}). Defina como 0 para ocultar a secção."
@@ -2367,6 +2368,42 @@
     "playFolder": "Reproduzir {{folder}}",
     "playGroup": "Reproduzir áudio",
     "playAll": "Reproduzir tudo"
+  },
+  "audiobooks": {
+    "detail": {
+      "continueFrom": "Continuar a partir de {{time}}",
+      "markNotStarted": "Marcar como não iniciado",
+      "chaptersCount_one": "{{count}} capítulo",
+      "chaptersCount_other": "{{count}} capítulos",
+      "chapterNumber": "Capítulo {{number}}",
+      "progressOfChapter": "Progresso: {{percent}}% de {{chapter}}",
+      "progressCompact": "{{percent}}% · {{chapter}}",
+      "resetChapterProgress": "Repor progresso do capítulo"
+    },
+    "metadata": {
+      "detectChaptersTitle": "Detetar capítulos",
+      "detectChaptersHint": "Deteta marcações faladas como \"Capítulo um\", \"Capítulo dois\"... no áudio e transforma-as em capítulos reais. Útil para um ficheiro sem dados de capítulos.",
+      "detectChaptersButton": "Detetar capítulos",
+      "detecting": "A analisar…",
+      "detectChaptersScanning": "A analisar… {{done}}/{{total}}",
+      "detectChaptersAutoApply": "Aplicar automaticamente no final",
+      "detectChaptersApplied": "Capítulos detetados e guardados.",
+      "detectChaptersNoneFound": "Não foi encontrada nenhuma marcação de capítulo falada. Ainda pode adicionar capítulos manualmente abaixo.",
+      "detectChaptersDiscard": "Descartar",
+      "detectChaptersPreview": "Pré-visualizar a partir daqui",
+      "detectChaptersRemove": "Remover este capítulo",
+      "detectChaptersAddRow": "+ Adicionar capítulo",
+      "detectChaptersTitlePlaceholder": "Título do capítulo",
+      "detectChaptersShowAdvanced": "Opções avançadas",
+      "detectChaptersHideAdvanced": "Ocultar opções avançadas",
+      "detectChaptersNoiseDbLabel": "Limiar de ruído (dB)",
+      "detectChaptersMinSilenceLabel": "Pausa mín. (s)",
+      "detectChaptersAdvancedHint": "Um audiolivro produzido com música ou efeitos sonoros entre capítulos pode precisar de um limiar de ruído menos negativo (por exemplo, -20) ou de uma pausa mínima mais curta para detetar transições que nunca ficam totalmente silenciosas.",
+      "detectChaptersApplyButton_one": "Aplicar {{count}} capítulo",
+      "detectChaptersApplyButton_other": "Aplicar {{count}} capítulos",
+      "detectChaptersFailed": "Falha na deteção de capítulos.",
+      "detectChaptersCancelled": "A deteção de capítulos foi cancelada."
+    }
   },
   "soundboard": {
     "title": "Painel de sons",

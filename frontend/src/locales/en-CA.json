@@ -1048,6 +1048,7 @@
       "viewModeMaps": "Maps",
       "viewModeTokens": "Tokens",
       "viewModeAudio": "Audio",
+      "viewModeAudiobooks": "Audiobooks",
       "viewModeModels": "Models",
       "recentLimit": "Recently opened books",
       "recentLimitHint": "How many recently opened books to remember (0–{{max}}). Set to 0 to hide the section."
@@ -2367,6 +2368,42 @@
     "playFolder": "Play {{folder}}",
     "playGroup": "Play audio",
     "playAll": "Play all"
+  },
+  "audiobooks": {
+    "detail": {
+      "continueFrom": "Continue from {{time}}",
+      "markNotStarted": "Mark as not started",
+      "chaptersCount_one": "{{count}} chapter",
+      "chaptersCount_other": "{{count}} chapters",
+      "chapterNumber": "Chapter {{number}}",
+      "progressOfChapter": "Progress: {{percent}}% of {{chapter}}",
+      "progressCompact": "{{percent}}% · {{chapter}}",
+      "resetChapterProgress": "Reset chapter progress"
+    },
+    "metadata": {
+      "detectChaptersTitle": "Detect Chapters",
+      "detectChaptersHint": "Listen for spoken \"Chapter One\", \"Chapter Two\", … markers in the audio and turn them into real chapters. Useful for a file with no chapter data at all.",
+      "detectChaptersButton": "Detect chapters",
+      "detecting": "Scanning…",
+      "detectChaptersScanning": "Scanning… {{done}}/{{total}}",
+      "detectChaptersAutoApply": "Apply automatically when finished",
+      "detectChaptersApplied": "Chapters detected and saved.",
+      "detectChaptersNoneFound": "No spoken chapter markers were found. You can still add chapters by hand below.",
+      "detectChaptersDiscard": "Discard",
+      "detectChaptersPreview": "Preview from here",
+      "detectChaptersRemove": "Remove this chapter",
+      "detectChaptersAddRow": "+ Add chapter",
+      "detectChaptersTitlePlaceholder": "Chapter title",
+      "detectChaptersShowAdvanced": "Advanced options",
+      "detectChaptersHideAdvanced": "Hide advanced options",
+      "detectChaptersNoiseDbLabel": "Noise floor (dB)",
+      "detectChaptersMinSilenceLabel": "Min. pause (s)",
+      "detectChaptersAdvancedHint": "A produced audiobook with music or sound effects between chapters may need a less negative noise floor (e.g. -20) or a shorter minimum pause to pick up transitions that never go fully silent.",
+      "detectChaptersApplyButton_one": "Apply {{count}} chapter",
+      "detectChaptersApplyButton_other": "Apply {{count}} chapters",
+      "detectChaptersFailed": "Chapter detection failed.",
+      "detectChaptersCancelled": "Chapter detection was cancelled."
+    }
   },
   "soundboard": {
     "title": "Soundboard",
