@@ -22,3 +22,8 @@ node_modules
 .coverage
 coverage.json
 htmlcov
+
+# audiobooks test library + local model downloads
+library/audiobooks/*
+!library/audiobooks/.gitkeep
+models/
