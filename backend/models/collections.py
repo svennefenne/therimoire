@@ -31,7 +31,18 @@ so anything may import it without a cycle.
 from typing import Any, Dict, Iterator, NamedTuple, Optional, Tuple
 
 from .library import Book, BookFolder
-from .media import Audio, AudioFolder, GenericMap, MapFolder, Model3D, Model3DFolder, Token, TokenFolder
+from .media import (
+    Audio,
+    AudioFolder,
+    Audiobook,
+    AudiobookFolder,
+    GenericMap,
+    MapFolder,
+    Model3D,
+    Model3DFolder,
+    Token,
+    TokenFolder,
+)
 
 
 class CollectionSpec(NamedTuple):
@@ -144,6 +155,17 @@ COLLECTIONS: Dict[str, CollectionSpec] = {
             "is_supported",
             "description",
         ),
+    ),
+    "audiobook": CollectionSpec(
+        singular="audiobook",
+        section="audiobooks",
+        model=Audiobook,
+        folder_model=AudiobookFolder,
+        thumb_section=None,
+        mergeable_fields=frozenset(
+            {"description", "title", "artist", "album", "tags"}
+        ),
+        compare_fields=("title", "artist", "album", "duration", "file_size"),
     ),
 }
 

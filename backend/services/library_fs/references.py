@@ -3,9 +3,10 @@
 Deleting a book, map, token, or audio row leaves behind everything that
 referenced it by id. Nothing in the schema removes those rows for us:
 
-* ``Bookmark.book_id`` is a real foreign key with no ``ondelete``, and
-  connections run ``PRAGMA foreign_keys=ON`` (``models/db.py``), so deleting a
-  bookmarked book *raises IntegrityError* rather than cascading.
+* ``Bookmark.book_id`` and ``AudiobookProgress.audiobook_id`` are real foreign
+  keys with no ``ondelete``, and connections run ``PRAGMA foreign_keys=ON``
+  (``models/db.py``), so deleting a bookmarked book or an audiobook someone
+  has playback progress on *raises IntegrityError* rather than cascading.
 * ``Favorite``, ``ResourceTag``, and ``CampaignResource`` are polymorphic —
   ``item_type``/``resource_type`` plus a bare id — so they carry no foreign key
   at all and their rows are simply orphaned.
@@ -23,8 +24,8 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from ...models.collections import iter_specs
-from ...models import Book, CampaignResource, Favorite, GameSystem, ResourceTag
-from ...models.users import Bookmark
+from ...models import Audiobook, Book, CampaignResource, Favorite, GameSystem, ResourceTag
+from ...models.users import AudiobookProgress, Bookmark
 from .moves import _section_for_model
 
 # The polymorphic discriminator each collection uses in `favorites.item_type`,
@@ -72,6 +73,11 @@ def purge_references(db: Session, model: Any, record_id: str) -> None:
         # ties these rows to the book and nothing else will ever collect them.
         db.execute(text("DELETE FROM book_search WHERE book_id = :id"), {"id": record_id})
         db.query(Bookmark).filter_by(book_id=record_id).delete(synchronize_session=False)
+
+    if model is Audiobook:
+        db.query(AudiobookProgress).filter_by(audiobook_id=record_id).delete(
+            synchronize_session=False
+        )
 
     db.query(Favorite).filter_by(item_type=item_type, item_id=record_id).delete(
         synchronize_session=False
@@ -129,6 +135,10 @@ def reference_counts(db: Session, model: Any, record_id: str) -> dict[str, int]:
     }
     if model is Book:
         counts["bookmarks"] = db.query(Bookmark).filter_by(book_id=record_id).count()
+    if model is Audiobook:
+        counts["progress"] = (
+            db.query(AudiobookProgress).filter_by(audiobook_id=record_id).count()
+        )
     return counts
 
 

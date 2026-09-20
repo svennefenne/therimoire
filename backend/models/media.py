@@ -145,6 +145,76 @@ class AudioFolder(Base):
     tags = Column(JSON, default=list)
 
 
+class Audiobook(Base):
+    """An audiobook (spoken-word narration, distinct from ambient Audio tracks).
+
+    A sibling of ``Audio`` rather than a repurposing of it: the two are browsed,
+    tagged, and favourited separately, and scanned from their own top-level
+    library folder (``library/audiobooks/``). Existing ``.m4b`` files already
+    catalogued under Audio are not migrated here automatically — see the note in
+    ``indexer/media.py`` — so a title only becomes an Audiobook once its file is
+    moved into that folder.
+    """
+
+    __tablename__ = "audiobooks"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    filename = Column(String(500), nullable=False)
+    filepath = Column(String(1000), nullable=False, unique=True)
+    relative_path = Column(String(1000), nullable=False)
+    description = Column(Text, default="")
+    # Embedded metadata (best-effort; populated by the indexer via mutagen).
+    duration = Column(Float, default=0.0)  # seconds
+    title = Column(String(500), default="")
+    artist = Column(String(500), default="")  # narrator/author, per the file's tags
+    album = Column(String(500), default="")
+    # Chapter markers, as a JSON list of {"title", "start", "end"} (seconds).
+    # Read the same way as Audio.chapters — see indexer/audio_chapters.py.
+    chapters = Column(JSON, nullable=True)
+    # Curated metadata from the Edit Metadata pane — distinct from the raw
+    # title/artist/album mirror above, which the indexer overwrites from
+    # whatever the file's tags happened to say. These are what the user
+    # actually edits; saving them also writes them into the file's own tags
+    # (see indexer/audio_tags.py) so a rescan reads back the same values
+    # rather than clobbering them. NULL/blank means "not curated yet" for a
+    # library scanned before this existed, or a title the user hasn't opened
+    # the editor for.
+    author = Column(String(500), default="")
+    narrator = Column(String(500), default="")
+    series = Column(String(500), default="")
+    # Nullable rather than defaulting to 0: an audiobook genuinely can be
+    # "book 0" in some series' own numbering, so 0 cannot double as "unset".
+    series_index = Column(Float, nullable=True)
+    year = Column(Integer, nullable=True)
+    genres = Column(JSON, default=list)
+    # True when folder cover art or embedded album art is available. Unlike
+    # Audio there is no UI-uploaded cover_image column: a cover chosen in the
+    # Edit Metadata pane (manually or via the Audible lookup) is embedded
+    # directly into the file itself instead — see indexer/audio_tags.py.
+    has_artwork = Column(Boolean, default=False)
+    file_size = Column(Integer, default=0)
+    # Content identity — see the note on GenericMap.content_hash.
+    content_hash = Column(String(64), nullable=True, index=True)
+    file_mtime = Column(Float, nullable=True)
+    # Variant grouping — see the note on Book.variant_parent_id. Two levels
+    # only, no ForeignKey; enforced in services/variants.py.
+    variant_parent_id = Column(String(36), nullable=True, index=True)
+    variant_kind = Column(String(30), default="")
+    variant_label = Column(String(120), default="")
+    is_missing = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=_utcnow)
+
+
+class AudiobookFolder(Base):
+    """Tags applied to an audiobook folder path."""
+
+    __tablename__ = "audiobook_folders"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    path = Column(String(1000), nullable=False, unique=True)
+    tags = Column(JSON, default=list)
+
+
 class Model3D(Base):
     """A 3D printable model (miniature, terrain, accessory).
 

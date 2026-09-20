@@ -3,6 +3,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -113,6 +114,32 @@ class Bookmark(Base):
     created_at = Column(DateTime, default=_utcnow)
 
     __table_args__ = (Index("ix_bookmarks_user_book", "user_id", "book_id"),)
+
+
+class AudiobookProgress(Base):
+    """Per-user playback position within an audiobook, for resume-on-play.
+
+    Mirrors Bookmark's shape (a real FK, not the polymorphic item_type/item_id
+    pattern Favorite uses) since progress is specific to one resource kind and
+    benefits from the same integrity guarantee: a row can't outlive the
+    audiobook it points at. One row per (user, audiobook) — the unique
+    constraint is what makes saving progress a plain upsert. "Not started" is
+    modelled by the row's absence rather than a stored 0.0, so resetting
+    progress (see the audiobooks progress endpoints) deletes the row outright.
+    """
+
+    __tablename__ = "audiobook_progress"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    audiobook_id = Column(String(36), ForeignKey("audiobooks.id"), nullable=False)
+    position_seconds = Column(Float, nullable=False, default=0.0)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "audiobook_id"),
+        Index("ix_audiobook_progress_user_audiobook", "user_id", "audiobook_id"),
+    )
 
 
 class Favorite(Base):

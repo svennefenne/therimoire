@@ -72,6 +72,8 @@ def update_settings(
         _set(db, "hide_audio", "true" if data.hide_audio else "false")
     if data.hide_models is not None:
         _set(db, "hide_models", "true" if data.hide_models else "false")
+    if data.hide_audiobooks is not None:
+        _set(db, "hide_audiobooks", "true" if data.hide_audiobooks else "false")
     if data.hide_campaigns is not None:
         _set(db, "hide_campaigns", "true" if data.hide_campaigns else "false")
     if data.restricted_categories is not None:
@@ -91,6 +93,7 @@ def update_settings(
         "show_stat_tokens",
         "show_stat_audio",
         "show_stat_models",
+        "show_stat_audiobooks",
         "show_stat_size",
         "show_stat_library_size",
     ):
@@ -214,6 +217,7 @@ def get_ui_settings(_: CurrentUser = Depends(get_current_user), db: Session = De
         "hide_tokens": raw["hide_tokens"] == "true",
         "hide_audio": raw["hide_audio"] == "true",
         "hide_models": raw["hide_models"] == "true",
+        "hide_audiobooks": raw["hide_audiobooks"] == "true",
         "hide_campaigns": raw["hide_campaigns"] == "true",
         "show_stat_systems": raw["show_stat_systems"] == "true",
         "show_stat_books": raw["show_stat_books"] == "true",
@@ -222,6 +226,7 @@ def get_ui_settings(_: CurrentUser = Depends(get_current_user), db: Session = De
         "show_stat_tokens": raw["show_stat_tokens"] == "true",
         "show_stat_audio": raw["show_stat_audio"] == "true",
         "show_stat_models": raw["show_stat_models"] == "true",
+        "show_stat_audiobooks": raw["show_stat_audiobooks"] == "true",
         "show_stat_size": raw["show_stat_size"] == "true",
         "show_stat_library_size": raw["show_stat_library_size"] == "true",
         "campaign_uploads_disabled": raw["campaign_uploads_disabled"] == "true",

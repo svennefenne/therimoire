@@ -5,10 +5,10 @@ from pydantic import BaseModel, Field
 
 from .._variant_schemas import VariantEntry, VariantMain
 
-# The four collections that can hold duplicates of each other. A map can never
+# The collections that can hold duplicates of each other. A map can never
 # be a variant of a book, so every request names exactly one of these and the
 # handler resolves it to a single model.
-ResourceType = Literal["book", "map", "token", "audio", "model"]
+ResourceType = Literal["book", "map", "token", "audio", "model", "audiobook"]
 
 
 class LinkChild(BaseModel):

@@ -100,9 +100,16 @@ class _ScanContext:
     on_progress: Optional[Callable[..., None]]
     should_stop: Optional[Callable[[], bool]]
     stats: dict
-    totals: dict  # {"books": int, "maps": int, "tokens": int, "audio": int, "models": int}
+    totals: dict  # {"books": int, "maps": int, "tokens": int, "audio": int, "models": int, "audiobooks": int}
     scanned: dict = field(
-        default_factory=lambda: {"books": 0, "maps": 0, "tokens": 0, "audio": 0, "models": 0}
+        default_factory=lambda: {
+            "books": 0,
+            "maps": 0,
+            "tokens": 0,
+            "audio": 0,
+            "models": 0,
+            "audiobooks": 0,
+        }
     )
     # Ids of rows inserted by this scan. Move detection only accepts one of these
     # as a destination — a pre-existing row is a file that did not move, even when
@@ -129,6 +136,8 @@ class _ScanContext:
                 self.totals["audio"],
                 self.scanned["models"],
                 self.totals["models"],
+                self.scanned["audiobooks"],
+                self.totals["audiobooks"],
             )
 
     def thumb_path(self, section: str, title: str, filepath: str) -> str:

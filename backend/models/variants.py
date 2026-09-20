@@ -66,6 +66,7 @@ VARIANT_KINDS_BY_TYPE: dict[str, frozenset] = {
         "split",
         "merged",
     },
+    "audiobook": _UNIVERSAL | {"abridged", "unabridged"},
 }
 
 # Every kind any collection accepts. Used where a resource type is not in hand —

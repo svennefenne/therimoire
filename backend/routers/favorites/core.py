@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ...config import get_db
 from ...auth import get_current_user, CurrentUser
-from ...models import Favorite, Book, GenericMap, Token, Audio, Model3D, GameSystem
+from ...models import Favorite, Book, GenericMap, Token, Audio, Audiobook, Model3D, GameSystem
 from ...services import access_control, tag_service
 from ..systems._helpers import resolve_cover_book_id
 from ..systems.covers import has_cover_file
@@ -14,7 +14,7 @@ from ._schemas import FavoriteIn
 router = APIRouter()
 
 # A "tag" favorite is keyed by the tag's internal string (not a row id).
-VALID_TYPES = {"book", "map", "token", "audio", "model", "system", "tag"}
+VALID_TYPES = {"book", "map", "token", "audio", "audiobook", "model", "system", "tag"}
 
 
 def list_favorites(user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -26,6 +26,7 @@ def list_favorites(user: CurrentUser = Depends(get_current_user), db: Session = 
     map_ids = [r.item_id for r in rows if r.item_type == "map"]
     token_ids = [r.item_id for r in rows if r.item_type == "token"]
     audio_ids = [r.item_id for r in rows if r.item_type == "audio"]
+    audiobook_ids = [r.item_id for r in rows if r.item_type == "audiobook"]
     model_ids = [r.item_id for r in rows if r.item_type == "model"]
     system_ids = [r.item_id for r in rows if r.item_type == "system"]
     tag_internals = [r.item_id for r in rows if r.item_type == "tag"]
@@ -41,6 +42,9 @@ def list_favorites(user: CurrentUser = Depends(get_current_user), db: Session = 
     maps = {m.id: m for m in db.query(GenericMap).filter(GenericMap.id.in_(map_ids))}
     tokens = {t.id: t for t in db.query(Token).filter(Token.id.in_(token_ids))}
     audio = {a.id: a for a in db.query(Audio).filter(Audio.id.in_(audio_ids))}
+    audiobooks = {
+        a.id: a for a in db.query(Audiobook).filter(Audiobook.id.in_(audiobook_ids))
+    }
     models = {m.id: m for m in db.query(Model3D).filter(Model3D.id.in_(model_ids))}
     systems = {
         s.id: s
@@ -54,6 +58,7 @@ def list_favorites(user: CurrentUser = Depends(get_current_user), db: Session = 
     map_tags = tag_service.display_tags_for_resources(db, "map", map_ids)
     token_tags = tag_service.display_tags_for_resources(db, "token", token_ids)
     audio_tags = tag_service.display_tags_for_resources(db, "audio", audio_ids)
+    audiobook_tags = tag_service.display_tags_for_resources(db, "audiobook", audiobook_ids)
     model_tags = tag_service.display_tags_for_resources(db, "model", model_ids)
 
     enriched = []
@@ -108,6 +113,20 @@ def list_favorites(user: CurrentUser = Depends(get_current_user), db: Session = 
                     "has_artwork": bool(a.has_artwork),
                     "file_size": a.file_size,
                     "tags": audio_tags.get(a.id, []),
+                }
+            )
+        elif r.item_type == "audiobook" and r.item_id in audiobooks:
+            a = audiobooks[r.item_id]
+            enriched.append(
+                {
+                    "item_type": "audiobook",
+                    "item_id": a.id,
+                    "filename": a.filename,
+                    "title": a.title or "",
+                    "duration": a.duration or 0.0,
+                    "has_artwork": bool(a.has_artwork),
+                    "file_size": a.file_size,
+                    "tags": audiobook_tags.get(a.id, []),
                 }
             )
         elif r.item_type == "model" and r.item_id in models:

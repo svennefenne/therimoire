@@ -28,13 +28,31 @@ from .constants import (
     VTT_DATA_EXTS,
     _DB_TIMEOUT,
 )
+from .audio_chapters import CHAPTER_CAPABLE_EXTS, read_chapters
 from .hashing import file_signature, hash_file
 from .metadata import _find_folder_artwork, _read_audio_metadata
 from .models3d import THUMBNAILABLE_EXTS as MODEL_THUMBNAIL_EXTS
 from .thumbnails import archive_ext
-from ..models import Audio
+from ..models import Audio, Audiobook
 
 logger = logging.getLogger("grimoire.indexer")
+
+
+def _needs_chapter_backfill(existing: Any, ext: str) -> bool:
+    """True when a registered M4A/M4B has no chapters recorded and could have some.
+
+    Mirrors ``_needs_thumbnail_backfill`` below for a different gap: a row
+    inserted while the image's ffmpeg build lacked the ``ffmetadata`` muxer
+    (see ``audio_chapters.py``) got ``chapters=None`` and stays that way
+    forever, because ``_scan_audio_like`` otherwise never revisits an
+    already-registered row. Retried at most once per scan per file — a
+    genuinely chapterless file (an mp3, or an m4b with no chapter atoms at
+    all) just reads back empty again and is left alone, same as a thumbnail
+    backfill that finds nothing to render.
+    """
+    if ext not in CHAPTER_CAPABLE_EXTS:
+        return False
+    return not getattr(existing, "chapters", None)
 
 
 def _needs_thumbnail_backfill(existing: Any, ext: str, arc_ext: str) -> bool:
@@ -249,11 +267,19 @@ def _scan_media(
                 logger.debug(f"{singular.capitalize()} already exists, skipping: {filepath}")
 
 
-def _scan_audio(ctx: _ScanContext, walk_dir: Path) -> None:
-    """Walk the audio tree, registering tracks with their metadata and artwork flag."""
+def _scan_audio_like(ctx: _ScanContext, walk_dir: Path, section: str, model: Any) -> None:
+    """Walk an audio-shaped tree, registering tracks with their metadata and artwork flag.
+
+    Shared by Audio and Audiobooks (issue: Audiobooks category) — the two differ
+    only in their section name, model, and log label; the walk, metadata read,
+    and archive handling are identical. ``section`` is "audio" (its own plural)
+    or "audiobooks"; the singular used in log messages and the stats key is
+    derived from it.
+    """
     session = ctx.session
     ignore = ctx.ignore
     stats = ctx.stats
+    singular = "audio" if section == "audio" else section[:-1]
     for root, dirs, files in os.walk(walk_dir):
         dirs[:] = _prune_dirs(root, dirs, ignore)
 
@@ -272,29 +298,68 @@ def _scan_audio(ctx: _ScanContext, walk_dir: Path) -> None:
                 logger.debug(f"Ignored by .grimoireignore: {filepath}")
                 continue
 
-            ctx.scanned["audio"] += 1
+            ctx.scanned[section] += 1
             ctx.emit_progress()
             if ctx.stop_requested():
-                logger.debug("scan_library: stop requested during audio scan.")
+                logger.debug(f"scan_library: stop requested during {section} scan.")
                 return
 
             relative_path = os.path.relpath(filepath, ctx.library_path)
 
             logger.debug(
-                f"Scanning audio ({ctx.scanned['audio']}/{ctx.totals['audio']}): {filepath}"
+                f"Scanning {singular} ({ctx.scanned[section]}/{ctx.totals[section]}): {filepath}"
             )
-            logger.debug(f"DB: querying existing audio '{filepath}'")
+            logger.debug(f"DB: querying existing {singular} '{filepath}'")
             try:
                 existing = _run_with_timeout(
-                    lambda fp=filepath: session.query(Audio).filter_by(filepath=fp).first(),
+                    lambda fp=filepath: session.query(model).filter_by(filepath=fp).first(),
                     _DB_TIMEOUT,
-                    f"query audio '{filepath}'",
+                    f"query {singular} '{filepath}'",
                 )
             except TimeoutError as e:
                 logger.error(f"DB hang: {e} - skipping '{filename}'")
                 stats["errors"] += 1
                 continue
             if existing:
+                # Backfill chapters for a row registered before the image's
+                # ffmpeg build could read them back out of an M4A/M4B (see
+                # ``_needs_chapter_backfill``). Existing rows otherwise never
+                # re-enter the insert path below, so without this a book
+                # whose file has always had valid chapter markers would stay
+                # chapterless in the database forever.
+                #
+                # 2026-09-20: this crashed the backend process twice while
+                # first landing, partway through "The Gate of the Feral
+                # Gods.m4b" (~985 MB) - including once after Docker's
+                # restart policy brought the container back and a persisted
+                # scan resumed against the same file. It was disabled and
+                # re-tested in isolation: with nothing else competing for
+                # the host's disk/memory, the identical code backfilled that
+                # same file (37 chapters) and an even larger one right after
+                # it (1.3 GB, 80 chapters) without incident, so the crash
+                # looks like host resource contention from an unrelated
+                # concurrent large file transfer rather than a bug in
+                # read_chapters() itself. Flagged here in case it recurs -
+                # if a scan crashes on a specific file again with nothing
+                # else running, that would point at a real bug after all.
+                if _needs_chapter_backfill(existing, ext):
+                    chapters = read_chapters(filepath)
+                    if chapters:
+                        existing.chapters = chapters
+                        try:
+                            _run_with_timeout(
+                                session.commit,
+                                _DB_TIMEOUT,
+                                f"commit {singular} chapter backfill '{filepath}'",
+                            )
+                            stats[f"updated_{section}"] += 1
+                            logger.info(
+                                f"Backfilled {len(chapters)} chapter(s) for {singular}: {filename}"
+                            )
+                        except TimeoutError as e:
+                            logger.error(f"DB hang: {e} - rolling back '{filename}'")
+                            session.rollback()
+                    continue
                 logger.debug(f"Already registered, skipping: {filename}")
                 continue
 
@@ -320,7 +385,7 @@ def _scan_audio(ctx: _ScanContext, walk_dir: Path) -> None:
                 meta = _read_audio_metadata(filepath)
                 has_artwork = bool(meta["embedded_art"]) or _find_folder_artwork(root) is not None
 
-            track = Audio(
+            track = model(
                 filename=filename,
                 filepath=filepath,
                 relative_path=relative_path,
@@ -337,19 +402,29 @@ def _scan_audio(ctx: _ScanContext, walk_dir: Path) -> None:
             )
 
             session.add(track)
-            logger.debug(f"DB: committing new audio '{filename}'")
+            logger.debug(f"DB: committing new {singular} '{filename}'")
             try:
-                _run_with_timeout(session.commit, _DB_TIMEOUT, f"commit audio '{filepath}'")
+                _run_with_timeout(session.commit, _DB_TIMEOUT, f"commit {singular} '{filepath}'")
                 ctx.inserted_ids.add(track.id)
-                stats["new_audio"] += 1
-                logger.info(f"Added audio: {meta['title'] or filename}")
+                stats[f"new_{section}"] += 1
+                logger.info(f"Added {singular}: {meta['title'] or filename}")
             except TimeoutError as e:
                 logger.error(f"DB hang: {e} - rolling back '{filename}'")
                 session.rollback()
                 stats["errors"] += 1
             except IntegrityError:
                 session.rollback()
-                logger.debug(f"Audio already exists, skipping: {filepath}")
+                logger.debug(f"{singular.capitalize()} already exists, skipping: {filepath}")
+
+
+def _scan_audio(ctx: _ScanContext, walk_dir: Path) -> None:
+    """Walk the audio tree, registering tracks with their metadata and artwork flag."""
+    _scan_audio_like(ctx, walk_dir, "audio", Audio)
+
+
+def _scan_audiobooks(ctx: _ScanContext, walk_dir: Path) -> None:
+    """Walk the audiobooks tree, registering tracks with their metadata and artwork flag."""
+    _scan_audio_like(ctx, walk_dir, "audiobooks", Audiobook)
 
 
 # Presupported/unsupported detection. Checked against the filename *and* the

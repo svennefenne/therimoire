@@ -29,6 +29,7 @@ from .routers import (
     addons as addons_router,
     audio as audio_router,
     audio_sets as audio_sets_router,
+    audiobooks as audiobooks_router,
     auth as auth_router,
     backups as backups_router,
     bookmarks as bookmarks_router,
@@ -95,6 +96,13 @@ _TAGS = [
         ),
     },
     {"name": "audio", "description": "Audio library - browse, tag, stream, and download tracks."},
+    {
+        "name": "audiobooks",
+        "description": (
+            "Audiobook library - browse, tag, stream, and download narrated titles, "
+            "with chapter navigation."
+        ),
+    },
     {"name": "search", "description": "Full-text search across all indexed book pages."},
     {
         "name": "campaigns",
@@ -320,6 +328,7 @@ api.include_router(maps_router.router)
 api.include_router(tokens_router.router)
 api.include_router(token_frames_router.router)
 api.include_router(audio_router.router)
+api.include_router(audiobooks_router.router)
 api.include_router(models_router.router)
 api.include_router(library_router.router)
 api.include_router(search_router.router)

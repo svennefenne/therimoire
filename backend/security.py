@@ -89,8 +89,18 @@ if _RATE_LIMIT_ENABLED:
 #   - scripts: only our own bundle ('self'); no inline/eval.
 #   - styles: 'self' + inline (React sets many inline styles) + Google Fonts CSS.
 #   - fonts: 'self' + Google Fonts file host + data: (inlined icon fonts).
-#   - images: 'self' + data:/blob: (rendered PDF pages are fetched as blobs).
-#   - connect: 'self' for the same-origin API/XHR.
+#   - images: 'self' + data:/blob: (rendered PDF pages are fetched as blobs),
+#     plus the cover-art CDNs for every "Find on Audible" metadata source
+#     (see services/metadata_lookup.py) so the picker can preview candidate
+#     covers before one is applied -- the same host suffixes
+#     services/audible_lookup.py's own _ALLOWED_IMAGE_HOSTS already trusts for
+#     the server-side fetch that embeds the chosen one, so this doesn't widen
+#     that trust boundary, just lets the browser render a preview of it:
+#     Amazon (Audible + Audnexus), Apple/mzstatic (iTunes), Google Books, and
+#     Open Library's covers host.
+#   - connect: 'self' for the same-origin API/XHR -- every source's own fetch
+#     happens server-side (apply_audiobook_cover_from_url), so this never
+#     needs to include any of their hosts.
 #   - frame-ancestors 'none' is the CSP equivalent of X-Frame-Options: DENY.
 _CSP = "; ".join(
     [
@@ -98,7 +108,12 @@ _CSP = "; ".join(
         "script-src 'self'",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com data:",
-        "img-src 'self' data: blob:",
+        "img-src 'self' data: blob: "
+        "https://*.media-amazon.com https://media-amazon.com "
+        "https://*.amazon.com https://amazon.com "
+        "https://*.mzstatic.com "
+        "https://books.google.com https://*.books.googleusercontent.com "
+        "https://covers.openlibrary.org",
         "connect-src 'self'",
         "object-src 'none'",
         "base-uri 'self'",

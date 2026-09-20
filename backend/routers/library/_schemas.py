@@ -38,11 +38,14 @@ class ScanStatusResponse(BaseModel):
     scanned_audio: Optional[int] = None
     total_models: Optional[int] = None
     scanned_models: Optional[int] = None
+    total_audiobooks: Optional[int] = None
+    scanned_audiobooks: Optional[int] = None
     new_books: Optional[int] = None
     new_maps: Optional[int] = None
     new_tokens: Optional[int] = None
     new_audio: Optional[int] = None
     new_models: Optional[int] = None
+    new_audiobooks: Optional[int] = None
     updated_books: Optional[int] = None
     indexed: Optional[int] = None
     to_index: Optional[int] = None
@@ -72,9 +75,11 @@ class StatsResponse(BaseModel):
     tokens: int
     audio: int
     models: int
+    audiobooks: int
     indexed_books: int
     total_pages: int
-    # Books only; ``library_size_mb`` covers maps, tokens, audio and models too.
+    # Books only; ``library_size_mb`` covers maps, tokens, audio, models, and
+    # audiobooks too.
     total_size_mb: float
     library_size_mb: float
 

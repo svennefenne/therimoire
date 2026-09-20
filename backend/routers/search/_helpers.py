@@ -7,6 +7,8 @@ from sqlalchemy import String, cast, or_
 from ...models import (
     Audio,
     AudioFolder,
+    Audiobook,
+    AudiobookFolder,
     GenericMap,
     MapFolder,
     Model3D,
@@ -131,9 +133,10 @@ def _media_filter_terms(parsed: ParsedQuery, field_name: str) -> list[str]:
 
 
 # Columns beyond ``filename`` that a ``title:``/``filename:`` term should also
-# match on a given collection. Audio carries an embedded track title, which is
-# the name a user actually sees in the player, so a title search has to reach it.
-_TITLE_ALIAS_COLUMNS = {"audio": "title"}
+# match on a given collection. Audio and Audiobook both carry an embedded track
+# title, which is the name a user actually sees in the player, so a title
+# search has to reach it.
+_TITLE_ALIAS_COLUMNS = {"audio": "title", "audiobook": "title"}
 
 
 def _media_terms(parsed: ParsedQuery) -> Optional[dict]:
@@ -339,6 +342,29 @@ def _search_audio(db, parsed: ParsedQuery) -> list:
             # Either embedded/folder artwork or a UI-set cover gives the row a
             # thumbnail; the artwork endpoint serves whichever is present.
             "has_thumbnail": bool(a.has_artwork or a.cover_image),
+            "tags": tags,
+        },
+    )
+
+
+def _search_audiobooks(db, parsed: ParsedQuery) -> list:
+    return _search_media(
+        db,
+        parsed,
+        Audiobook,
+        AudiobookFolder,
+        "audiobook",
+        extra_fields={
+            "title": Audiobook.title,
+            "artist": Audiobook.artist,
+            "album": Audiobook.album,
+        },
+        serialize=lambda a, tags: {
+            "id": a.id,
+            "filename": a.filename,
+            "relative_path": a.relative_path,
+            "title": a.title,
+            "has_thumbnail": bool(a.has_artwork),
             "tags": tags,
         },
     )

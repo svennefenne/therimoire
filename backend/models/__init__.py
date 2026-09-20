@@ -40,6 +40,8 @@ from .library import (
 from .media import (
     Audio,
     AudioFolder,
+    Audiobook,
+    AudiobookFolder,
     GenericMap,
     MapFolder,
     Model3D,
@@ -50,7 +52,7 @@ from .media import (
 from .settings import AppSetting
 from .tags import RESOURCE_TYPES, SHARED_CATEGORY, TAG_CATEGORIES, ResourceTag, Tag
 from .variants import VARIANT_KINDS, VARIANT_KINDS_BY_TYPE, kinds_for
-from .users import AuthSession, Bookmark, Favorite, SavedFilter, User, UserTheme
+from .users import AudiobookProgress, AuthSession, Bookmark, Favorite, SavedFilter, User, UserTheme
 
 __all__ = [
     "Base",
@@ -75,6 +77,8 @@ __all__ = [
     "TokenFolder",
     "Audio",
     "AudioFolder",
+    "Audiobook",
+    "AudiobookFolder",
     # Variants / duplicates
     "VARIANT_KINDS",
     "VARIANT_KINDS_BY_TYPE",
@@ -88,6 +92,7 @@ __all__ = [
     "Favorite",
     "SavedFilter",
     "UserTheme",
+    "AudiobookProgress",
     # Saved audio sets
     "AudioSet",
     "SET_TYPES",

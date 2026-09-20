@@ -11,6 +11,7 @@ from ._helpers import (
     _archive_response,
     _can_see_explicit,
     _files_for_audio_folder,
+    _files_for_audiobook_folder,
     _files_for_book_folder,
     _files_for_library_folder,
     _files_for_map_folder,
@@ -29,8 +30,8 @@ def download_archive(
         ...,
         description=(
             "Scope: system | system_category | book_folder | map_folder | "
-            "token_folder | audio_folder | model_folder | library_folder | "
-            "tag | tag_type | tag_folder"
+            "token_folder | audio_folder | audiobook_folder | model_folder | "
+            "library_folder | tag | tag_type | tag_folder"
         ),
     ),
     fmt: str = Query("zip", description="Archive format: zip | tar | tar.gz | tar.bz2"),
@@ -45,14 +46,15 @@ def download_archive(
         None,
         description=(
             "Resource type to scope a tag archive to: book | map | token | audio | "
-            "model (tag_type / tag_folder)"
+            "model | audiobook (tag_type / tag_folder)"
         ),
     ),
     folder: Optional[str] = Query(
         None,
         description=(
-            "Folder path (book_folder / map_folder / token_folder / audio_folder / model_folder / "
-            "library_folder — the latter is library-root-relative)"
+            "Folder path (book_folder / map_folder / token_folder / audio_folder / "
+            "audiobook_folder / model_folder / library_folder — the latter is "
+            "library-root-relative)"
         ),
     ),
     current_user: CurrentUser = Depends(get_current_user),
@@ -101,6 +103,11 @@ def download_archive(
         if not folder:
             raise HTTPException(400, "folder is required for type=audio_folder")
         files, base = _files_for_audio_folder(db, folder)
+
+    elif type == "audiobook_folder":
+        if not folder:
+            raise HTTPException(400, "folder is required for type=audiobook_folder")
+        files, base = _files_for_audiobook_folder(db, folder)
 
     elif type == "tag":
         # The whole tag, every type at once — the tag browser's top level.

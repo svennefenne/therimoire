@@ -11,11 +11,14 @@ Rather than hand-parse the box structure, this shells out the same way
 demuxer (it needs it to read MP4 battlemaps), and dumping chapters via the
 ``ffmetadata`` muxer never touches the audio stream at all — no decode, no
 encode, just a read of the container's own metadata — so it works even
-though that ffmpeg build has no audio decoders at all. The one thing the
-image's ffmpeg-builder stage does not yet enable is the ``ffmetadata`` muxer
-itself; until it does, this quietly returns no chapters in the built image
-(``read_chapters`` never raises), while a system ffmpeg on a dev machine
-already has it and works today.
+though that ffmpeg build has no audio decoders at all. The image's
+ffmpeg-builder stage enables that muxer alongside its demuxer (the demuxer
+side feeds the audiobook-conversion feature's own hand-written chapter list
+into an encode; this muxer is what lets that data be read back out again),
+so this works the same inside the built image as it does with a system
+ffmpeg on a dev machine. ``read_chapters`` never raises regardless — a
+build that somehow lacks the muxer, or a file with no chapters at all, both
+just come back as an empty list.
 """
 import logging
 import os

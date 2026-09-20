@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
-from ...models import Model3D, Audio, Book, GameSystem, GenericMap, Token, User
+from ...models import Model3D, Audio, Audiobook, Book, GameSystem, GenericMap, Token, User
 from ...models.collections import COLLECTIONS
 from ...services import access_control, tag_service
 
@@ -305,6 +305,27 @@ def _files_for_audio_folder(db, folder: str) -> tuple[list, str]:
     return files, f"audio_{_safe_name(folder)}"
 
 
+def _files_for_audiobook_folder(db, folder: str) -> tuple[list, str]:
+    prefix = folder.strip("/") + "/"
+    items = db.query(Audiobook).all()
+
+    def _arcname(a: Audiobook) -> str:
+        rp = a.relative_path.replace("\\", "/")
+        rel = rp.split("/", 1)[1] if "/" in rp else rp
+        raw = rel[len(prefix):] if rel.startswith(prefix) else (rel or a.filename)
+        return _safe_arcname(raw)
+
+    files = [
+        (safe, _arcname(a))
+        for a in items
+        if a.relative_path.replace("\\", "/").lstrip("/").lower().startswith(
+            "audiobooks/" + prefix.lower()
+        )
+        and (safe := _safe_filepath(a.filepath))
+    ]
+    return files, f"audiobooks_{_safe_name(folder)}"
+
+
 # A ceiling on what one library-folder archive will stream. The file manager can
 # point at any folder, including the library root, and a request that walks
 # hundreds of gigabytes ties up a worker for the whole transfer. Refusing up
@@ -391,7 +412,7 @@ def _files_for_library_folder(folder: str) -> tuple[list, str]:
 # a tagged *system* is a whole shelf rather than a file, and pulling it in would
 # turn a four-item tag into a multi-gigabyte download. Its own page already has
 # a download button (issue #401).
-_TAG_ARCHIVE_TYPES = ("book", "map", "token", "audio", "model")
+_TAG_ARCHIVE_TYPES = ("book", "map", "token", "audio", "model", "audiobook")
 
 
 def _tag_items_by_type(

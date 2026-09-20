@@ -18,6 +18,7 @@ from ._helpers import (
     VISIBLE_BOOKS_SQL,
     _CATEGORY_PRIORITY,
     _search_audio,
+    _search_audiobooks,
     _search_maps,
     _search_tokens,
     escape_snippet,
@@ -155,11 +156,13 @@ def search_library(
     tokens = []
     audio = []
     models = []
+    audiobooks = []
     if not book_id and not system_id:
         maps = _search_maps(db, parsed)
         tokens = _search_tokens(db, parsed)
         audio = _search_audio(db, parsed)
         models = _search_models(db, parsed)
+        audiobooks = _search_audiobooks(db, parsed)
 
     return {
         "query": q,
@@ -167,13 +170,14 @@ def search_library(
         # page text is one row in book_matches plus its page hits; both are
         # displayed, so both are counted.
         "total": len(enriched) + len(book_matches) + len(maps) + len(tokens) + len(audio)
-        + len(models),
+        + len(models) + len(audiobooks),
         "results": enriched,
         "book_matches": book_matches,
         "maps": maps,
         "tokens": tokens,
         "audio": audio,
         "models": models,
+        "audiobooks": audiobooks,
         # Echoed back so the client can show what it understood and, when a
         # filter is active, explain why the content section is empty.
         "fields": sorted(parsed.filters.keys()),

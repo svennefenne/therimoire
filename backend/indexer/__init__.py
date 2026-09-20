@@ -148,6 +148,13 @@ from .metadata import (  # noqa: E402,F401
     resolve_scope,
 )
 
+# --- Writing curated audiobook metadata back into the file's own tags ----------
+from .audio_tags import (  # noqa: E402,F401
+    TAG_FIELDS as AUDIOBOOK_TAG_FIELDS,
+    write_audio_tags,
+    write_cover_art,
+)
+
 # --- Full-text indexing --------------------------------------------------------
 from .text_index import (  # noqa: E402,F401
     index_book_text,

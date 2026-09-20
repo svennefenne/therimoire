@@ -80,6 +80,18 @@ class FavoriteAudioItem(BaseModel):
     tags: list[str]
 
 
+class FavoriteAudiobookItem(BaseModel):
+    item_type: Literal["audiobook"]
+    item_id: str
+    filename: str
+    # Handler coalesces these (`a.title or ""`, `a.duration or 0.0`).
+    title: str
+    duration: float
+    has_artwork: bool
+    file_size: Optional[int] = None
+    tags: list[str]
+
+
 class FavoriteSystemItem(BaseModel):
     item_type: Literal["system"]
     item_id: str
@@ -115,6 +127,7 @@ FavoriteItem = Annotated[
         FavoriteMapItem,
         FavoriteTokenItem,
         FavoriteAudioItem,
+        FavoriteAudiobookItem,
         FavoriteModelItem,
         FavoriteSystemItem,
         FavoriteTagItem,

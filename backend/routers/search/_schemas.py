@@ -75,6 +75,17 @@ class SearchAudioHit(BaseModel):
     tags: list[str]
 
 
+class SearchAudiobookHit(BaseModel):
+    id: str
+    filename: str
+    relative_path: str
+    # `default=""` on the model, so NULL is possible on legacy rows.
+    title: Optional[str] = None
+    # True when embedded/folder artwork exists.
+    has_thumbnail: bool = False
+    tags: list[str]
+
+
 class SearchField(BaseModel):
     """One documented `field:` prefix, for the in-app help popover."""
 
@@ -100,5 +111,6 @@ class SearchResponse(BaseModel):
     tokens: list[SearchTokenHit]
     audio: list[SearchAudioHit]
     models: list[SearchModelHit] = []
+    audiobooks: list[SearchAudiobookHit] = []
     # Canonical names of the `field:` filters recognised in `query`.
     fields: list[str] = []

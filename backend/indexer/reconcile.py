@@ -19,14 +19,15 @@ from ._subprocess import _run_with_timeout
 from .constants import _DB_TIMEOUT
 from ..metadata import export as sidecar_export
 from ..metadata import settings as sidecar_settings
-from ..models import Audio, Book, GameSystem, GenericMap, Model3D, Token
+from ..models import Audio, Audiobook, Book, GameSystem, GenericMap, Model3D, Token
 
 logger = logging.getLogger("grimoire.indexer")
 
 
-# Which thumbnail subdirectory each model's covers live in. Audio is absent on
-# purpose: it carries ``has_artwork``/``cover_image`` sourced from embedded tags
-# or folder artwork, not a path-keyed file this module could orphan.
+# Which thumbnail subdirectory each model's covers live in. Audio and
+# Audiobook are both absent on purpose: they carry ``has_artwork`` sourced from
+# embedded tags or folder artwork, not a path-keyed file this module could
+# orphan.
 _THUMB_SECTIONS: dict[Any, str] = {
     GenericMap: "maps",
     Token: "tokens",
@@ -337,6 +338,7 @@ def _reconcile_missing(
     scan_tokens: bool,
     scan_audio: bool,
     scan_models: bool = True,
+    scan_audiobooks: bool = True,
 ) -> None:
     """Mark / unmark ``is_missing`` for every record after the walk.
 
@@ -359,14 +361,15 @@ def _reconcile_missing(
     def _gone(filepath: str) -> bool:
         return not os.path.exists(filepath) or ignore.is_ignored(filepath, is_dir=False)
 
-    counts = {"books": 0, "maps": 0, "tokens": 0, "audio": 0, "models": 0}
-    moved = {"books": 0, "maps": 0, "tokens": 0, "audio": 0, "models": 0}
+    counts = {"books": 0, "maps": 0, "tokens": 0, "audio": 0, "models": 0, "audiobooks": 0}
+    moved = {"books": 0, "maps": 0, "tokens": 0, "audio": 0, "models": 0, "audiobooks": 0}
     collections = (
         ("books", Book, scan_books, "book"),
         ("maps", GenericMap, scan_maps, "map"),
         ("tokens", Token, scan_tokens, "token"),
         ("audio", Audio, scan_audio, "audio"),
         ("models", Model3D, scan_models, "model"),
+        ("audiobooks", Audiobook, scan_audiobooks, "audiobook"),
     )
     # Pass 1 — re-point moved files. This runs to completion first, and commits as
     # it goes, so the missing-flag pass below sees a settled set of rows: a moved
@@ -397,16 +400,18 @@ def _reconcile_missing(
     missing_maps = counts["maps"]
     missing_tokens = counts["tokens"]
     missing_audio = counts["audio"]
+    missing_audiobooks = counts["audiobooks"]
     total_moved = sum(moved.values())
     if total_moved:
         logger.info(
             f"Recognised {total_moved} moved file(s) - kept their tags, favorites, "
             f"and reading progress instead of re-adding them."
         )
-    if missing_books or missing_maps or missing_tokens or missing_audio:
+    if missing_books or missing_maps or missing_tokens or missing_audio or missing_audiobooks:
         logger.warning(
             f"Some files are no longer on disk: {missing_books} book(s), {missing_maps} map(s), "
-            f"{missing_tokens} token(s), {missing_audio} audio file(s)."
+            f"{missing_tokens} token(s), {missing_audio} audio file(s), "
+            f"{missing_audiobooks} audiobook(s)."
         )
     try:
         _run_with_timeout(session.commit, _DB_TIMEOUT, "commit missing flags")
@@ -418,10 +423,12 @@ def _reconcile_missing(
     ctx.stats["missing_maps"] = missing_maps
     ctx.stats["missing_tokens"] = missing_tokens
     ctx.stats["missing_audio"] = missing_audio
+    ctx.stats["missing_audiobooks"] = missing_audiobooks
     ctx.stats["moved_books"] = moved["books"]
     ctx.stats["moved_maps"] = moved["maps"]
     ctx.stats["moved_tokens"] = moved["tokens"]
     ctx.stats["moved_audio"] = moved["audio"]
+    ctx.stats["moved_audiobooks"] = moved["audiobooks"]
 
 
 def _export_sidecars_for_new_books(ctx: "_ScanContext") -> None:

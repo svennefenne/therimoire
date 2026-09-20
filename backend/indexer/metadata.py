@@ -43,7 +43,9 @@ def _read_audio_metadata(filepath: str) -> dict:
     }
     try:
         from mutagen import File as MutagenFile  # local import keeps startup light
+        from ._mutagen_quirks import ensure_patched
 
+        ensure_patched()
         easy = MutagenFile(filepath, easy=True)
         if easy is not None:
             if getattr(easy, "info", None) is not None:
@@ -88,7 +90,9 @@ def _extract_embedded_art(filepath: str) -> Optional[Tuple[bytes, str]]:
     """
     try:
         from mutagen import File as MutagenFile
+        from ._mutagen_quirks import ensure_patched
 
+        ensure_patched()
         audio = MutagenFile(filepath)
         if audio is None:
             return None
@@ -356,10 +360,10 @@ def resolve_scope(library_path: str, scope_path: str) -> tuple[str, Path]:
 
     head, _, rest = cleaned.partition("/")
     section = head.lower()
-    if section not in ("books", "maps", "tokens", "audio", "models"):
+    if section not in ("books", "maps", "tokens", "audio", "models", "audiobooks"):
         raise ValueError(
-            "scope must start with books/, maps/, tokens/, audio/, or models/: "
-            f"{scope_path!r}"
+            "scope must start with books/, maps/, tokens/, audio/, models/, or "
+            f"audiobooks/: {scope_path!r}"
         )
 
     # Build the target without resolving symlinks so the walked paths match the

@@ -35,11 +35,14 @@ _DEFAULT_STATUS: dict = {
     "scanned_audio": 0,
     "total_models": 0,
     "scanned_models": 0,
+    "total_audiobooks": 0,
+    "scanned_audiobooks": 0,
     "new_books": 0,
     "new_maps": 0,
     "new_tokens": 0,
     "new_audio": 0,
     "new_models": 0,
+    "new_audiobooks": 0,
     "updated_books": 0,
     # Books whose contents changed under an unchanged path (re-indexed in place),
     # and files recognised as moved rather than deleted-and-re-added (issue #284).
@@ -449,7 +452,7 @@ def run_rescan_sync(scope_path: str | None = None, metadata_mode: str = "new") -
             # --- Phase 1: file scan ---
             logger.info("Scanning your library for new and changed files…")
 
-            def on_progress(sb, tb, sm, tm, st, tt, sa, ta, smo=0, tmo=0):
+            def on_progress(sb, tb, sm, tm, st, tt, sa, ta, smo=0, tmo=0, sab=0, tab=0):
                 _set_status(
                     {
                         "scanned_books": sb,
@@ -462,11 +465,14 @@ def run_rescan_sync(scope_path: str | None = None, metadata_mode: str = "new") -
                         "total_audio": ta,
                         "scanned_models": smo,
                         "total_models": tmo,
+                        "scanned_audiobooks": sab,
+                        "total_audiobooks": tab,
                     }
                 )
                 logger.debug(
                     f"File scan progress: books={sb}/{tb}, maps={sm}/{tm}, "
-                    f"tokens={st}/{tt}, audio={sa}/{ta}, models={smo}/{tmo}"
+                    f"tokens={st}/{tt}, audio={sa}/{ta}, models={smo}/{tmo}, "
+                    f"audiobooks={sab}/{tab}"
                 )
 
             stats = scan_library(
@@ -480,6 +486,7 @@ def run_rescan_sync(scope_path: str | None = None, metadata_mode: str = "new") -
                 + stats.get("new_tokens", 0)
                 + stats.get("new_audio", 0)
                 + stats.get("new_models", 0)
+                + stats.get("new_audiobooks", 0)
             )
             _errors = stats.get("errors", 0)
             _msg = (
@@ -496,6 +503,7 @@ def run_rescan_sync(scope_path: str | None = None, metadata_mode: str = "new") -
                 f"new_maps={stats.get('new_maps', 0)}, new_tokens={stats.get('new_tokens', 0)}, "
                 f"new_audio={stats.get('new_audio', 0)}, "
                 f"new_models={stats.get('new_models', 0)}, "
+                f"new_audiobooks={stats.get('new_audiobooks', 0)}, "
                 f"updated_books={stats.get('updated_books', 0)}, "
                 f"errors={_errors}"
             )
@@ -506,11 +514,12 @@ def run_rescan_sync(scope_path: str | None = None, metadata_mode: str = "new") -
                     "new_tokens": stats.get("new_tokens", 0),
                     "new_audio": stats.get("new_audio", 0),
                     "new_models": stats.get("new_models", 0),
+                    "new_audiobooks": stats.get("new_audiobooks", 0),
                     "updated_books": stats.get("updated_books", 0),
                     "replaced_books": stats.get("replaced_books", 0),
                     "moved_files": sum(
                         stats.get(f"moved_{k}", 0)
-                        for k in ("books", "maps", "tokens", "audio", "models")
+                        for k in ("books", "maps", "tokens", "audio", "models", "audiobooks")
                     ),
                 }
             )
