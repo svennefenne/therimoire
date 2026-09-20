@@ -37,6 +37,7 @@ export default function LibrarySection() {
     { type: 'map', label: t('userSettings.library.viewModeMaps') },
     { type: 'token', label: t('userSettings.library.viewModeTokens') },
     { type: 'audio', label: t('userSettings.library.viewModeAudio') },
+    { type: 'audiobook', label: t('userSettings.library.viewModeAudiobooks') },
     { type: 'model', label: t('userSettings.library.viewModeModels') },
   ]
 

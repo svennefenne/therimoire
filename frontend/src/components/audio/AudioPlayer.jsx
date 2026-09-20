@@ -17,7 +17,7 @@ import { useAudioPlayer } from '../../context/AudioPlayerContext'
  * one audio element app-wide (see GlobalAudioPlayer), so playback survives
  * navigation and multiple controls stay in sync.
  */
-export default function AudioPlayer({ track, showPlayNext = false, size = 44 }) {
+export default function AudioPlayer({ track, showPlayNext = false, size = 44, savedFraction }) {
   const { t } = useTranslation()
   const {
     playQueue,
@@ -36,9 +36,20 @@ export default function AudioPlayer({ track, showPlayNext = false, size = 44 }) 
   const current = isCurrent(track.id)
 
   // Progress ring around the button, so a glance at the control also says how
-  // far into the track you are. Only the current track has meaningful progress;
-  // a zero/unknown duration (still loading, or a stream) leaves the ring empty.
-  const progress = current && duration > 0 ? Math.min(Math.max(currentTime / duration, 0), 1) : 0
+  // far into the track you are. The current track's own live position wins
+  // (it's exact, and keeps advancing while playing); otherwise `savedFraction`
+  // — this listener's last saved position for this item, as a 0..1 fraction of
+  // the full duration, passed in by gallery rows (see MediaCard) — draws the
+  // same ring for a book you've started but isn't loaded right now. A
+  // zero/unknown duration (still loading, or a stream) leaves the ring empty.
+  const hasSavedFraction = typeof savedFraction === 'number' && Number.isFinite(savedFraction)
+  const progress =
+    current && duration > 0
+      ? Math.min(Math.max(currentTime / duration, 0), 1)
+      : hasSavedFraction
+        ? Math.min(Math.max(savedFraction, 0), 1)
+        : 0
+  const showRing = current || (hasSavedFraction && progress > 0)
   const ringWidth = Math.max(2, Math.round(size * 0.07))
 
   const onToggle = (e) => {
@@ -63,6 +74,12 @@ export default function AudioPlayer({ track, showPlayNext = false, size = 44 }) 
       <div
         // The ring is a conic-gradient disc masked by the button sitting on top
         // of it, which avoids an SVG and scales with `size`.
+        //
+        // pointerEvents: 'auto' matters in the gallery grid card: the overlay
+        // that centers this component inside the thumbnail is itself
+        // pointerEvents:'none' (so the rest of the artwork falls through to
+        // the card's navigation link) — this re-enables clicks on just this
+        // button-sized area, not the whole thumbnail.
         style={{
           position: 'relative',
           width: size,
@@ -72,7 +89,8 @@ export default function AudioPlayer({ track, showPlayNext = false, size = 44 }) 
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: current
+          pointerEvents: 'auto',
+          background: showRing
             ? `conic-gradient(var(--gold) ${progress * 360}deg, var(--border) 0deg)`
             : 'transparent',
         }}
@@ -82,8 +100,8 @@ export default function AudioPlayer({ track, showPlayNext = false, size = 44 }) 
           onClick={onToggle}
           aria-label={playing ? t('audio.pause') : t('audio.play')}
           style={{
-            width: current ? size - ringWidth * 2 : size,
-            height: current ? size - ringWidth * 2 : size,
+            width: showRing ? size - ringWidth * 2 : size,
+            height: showRing ? size - ringWidth * 2 : size,
             borderRadius: '50%',
             border: 'none',
             background: 'var(--overlay)',

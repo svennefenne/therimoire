@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LuX, LuMusic, LuGripVertical, LuSave } from 'react-icons/lu'
 import { mediaUrl } from '../../api'
-import { useAudioPlayer } from '../../context/AudioPlayerContext'
+import { apiBaseFor, useAudioPlayer } from '../../context/AudioPlayerContext'
 import useAudioSets from '../../hooks/useAudioSets'
 import LazyImg from '../LazyImg'
 import NowPlayingIndicator from './NowPlayingIndicator'
@@ -169,7 +169,7 @@ export default function AudioQueuePanel({ bottom = 72, left = 0 }) {
                 >
                   {track.artwork ? (
                     <LazyImg
-                      src={mediaUrl(`/audio/${track.id}/artwork`)}
+                      src={mediaUrl(`${apiBaseFor(track)}/${track.id}/artwork`)}
                       alt=""
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />

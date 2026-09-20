@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LuCheck, LuFileVideo } from 'react-icons/lu'
-import { mediaUrl } from '../../api'
+import api, { mediaUrl } from '../../api'
 import { formatSize } from '../../utils'
 import FavoriteButton from '../FavoriteButton'
 import DownloadButton from '../DownloadButton'
@@ -29,7 +29,16 @@ const CORNER_POS = {
 export default function MediaCard({ config, item, bulkMode, selected, onToggle, list }) {
   const { t } = useTranslation()
   const [hovered, setHovered] = useState(false)
-  const { isCurrent, isPlayingId } = useAudioPlayer()
+  const {
+    isCurrent,
+    isPlayingId,
+    currentTime,
+    duration,
+    currentChapters,
+    activeChapterIndex,
+    resetProgress,
+    seek,
+  } = useAudioPlayer()
   const Icon = config.icon
 
   // Outside bulk mode the card is a real link (a CardLink overlay), so middle
@@ -48,11 +57,13 @@ export default function MediaCard({ config, item, bulkMode, selected, onToggle, 
         },
         role: 'button',
         tabIndex: 0,
-        'aria-label': item.filename,
+        'aria-label': item.title || item.filename,
         'aria-pressed': selected,
       }
     : {}
-  const cardLink = !bulkMode && <CardLink to={config.detailPath(item.id)} label={item.filename} />
+  const cardLink = !bulkMode && (
+    <CardLink to={config.detailPath(item.id)} label={item.title || item.filename} />
+  )
 
   // Badges that apply to this item, in config order. `footer` badges render in
   // the card footer next to the size (and in the list-mode metadata row) rather
@@ -73,8 +84,11 @@ export default function MediaCard({ config, item, bulkMode, selected, onToggle, 
   // Track ref for the global audio player (audio gallery only). Archives in the
   // audio tree (issue #250) are opaque blobs with nothing to play.
   const isAudio = !!config.audioFileUrl && !item.is_archive
+  // `kind` lets the global player resolve the right API base (/audio vs
+  // /audiobooks — see apiBaseFor in AudioPlayerContext); config.type is
+  // exactly that collection name for both.
   const track = isAudio
-    ? { id: item.id, title: item.title || item.filename, artwork: item.has_artwork }
+    ? { id: item.id, title: item.title || item.filename, artwork: item.has_artwork, kind: config.type }
     : null
 
   // "Active" (this is the loaded track — keeps the row findable even when
@@ -82,6 +96,93 @@ export default function MediaCard({ config, item, bulkMode, selected, onToggle, 
   // audio so map/token rows are untouched.
   const isActiveTrack = isAudio && isCurrent(item.id)
   const isPlayingTrack = isAudio && isPlayingId(item.id)
+
+  // The extra chapter/progress reporting below (progress ring fraction,
+  // "23% of Chapter 3", the reset actions) is audiobook-only — plain Audio
+  // tracks have no per-user resume state on the backend.
+  const isAudiobook = isAudio && config.type === 'audiobook'
+
+  // A "Reset chapter progress" / "Mark as not started" click updates the
+  // server, but this card only gets a fresh item.progress_seconds on the
+  // gallery's next full fetch — so the result is held here and preferred
+  // over the prop until then, letting the row update immediately.
+  const [progressOverride, setProgressOverride] = useState(null)
+
+  // While this book is the one actually loaded in the player, its live
+  // position is more accurate than whatever was last saved to the server
+  // (which trails by up to the periodic save interval — see
+  // AudioPlayerContext) — mirrors the same live-vs-saved choice
+  // AudiobookDetailView makes for its own "Continue from" row.
+  const effectiveProgressSeconds = isActiveTrack
+    ? currentTime
+    : progressOverride
+      ? progressOverride.progress_seconds
+      : item.progress_seconds
+  const effectiveCurrentChapter = isActiveTrack
+    ? activeChapterIndex >= 0 && currentChapters[activeChapterIndex]
+      ? {
+          index: activeChapterIndex,
+          title: currentChapters[activeChapterIndex].title || '',
+          start_seconds: currentChapters[activeChapterIndex].start,
+          percent: Math.max(
+            0,
+            Math.min(
+              1,
+              (currentTime - currentChapters[activeChapterIndex].start) /
+                Math.max(
+                  currentChapters[activeChapterIndex].end -
+                    currentChapters[activeChapterIndex].start,
+                  0.001
+                )
+            )
+          ),
+        }
+      : null
+    : progressOverride
+      ? progressOverride.current_chapter
+      : item.current_chapter
+  const effectiveChapterCount = isActiveTrack ? currentChapters.length : item.chapter_count || 0
+  const effectiveDuration = isActiveTrack && duration > 0 ? duration : item.duration || 0
+
+  const hasResumableProgress =
+    isAudiobook &&
+    effectiveDuration > 0 &&
+    effectiveProgressSeconds > 3 &&
+    effectiveProgressSeconds < effectiveDuration - 3
+  const savedFraction =
+    isAudiobook && effectiveDuration > 0 && Number.isFinite(effectiveProgressSeconds)
+      ? effectiveProgressSeconds / effectiveDuration
+      : undefined
+
+  const chapterLabel = (chapter) =>
+    chapter?.title || t('audiobooks.detail.chapterNumber', { number: (chapter?.index ?? 0) + 1 })
+  // How far through the *current chapter* (not the whole book — that's
+  // savedFraction, for the ring) — this is what "23% of Chapter 3" reports,
+  // and what resetChapterProgress below zeroes out immediately by setting
+  // current_chapter.percent to 0 in the override, ahead of the server
+  // round trip actually landing.
+  const chapterPercent = Math.round((effectiveCurrentChapter?.percent ?? 0) * 100)
+
+  const markNotStarted = async () => {
+    await resetProgress(item.id)
+    setProgressOverride({ progress_seconds: null, current_chapter: null })
+  }
+
+  const resetChapterProgress = async () => {
+    const chapter = effectiveCurrentChapter
+    if (!chapter) return
+    const newPosition = chapter.start_seconds
+    try {
+      await api.put(`/audiobooks/${item.id}/progress`, { position_seconds: newPosition })
+    } catch {
+      // Best-effort — matches the save-progress calls in AudioPlayerContext.
+    }
+    setProgressOverride({
+      progress_seconds: newPosition,
+      current_chapter: { ...chapter, percent: 0 },
+    })
+    if (isActiveTrack) seek(newPosition)
+  }
 
   if (list) {
     return (
@@ -163,7 +264,7 @@ export default function MediaCard({ config, item, bulkMode, selected, onToggle, 
               fontWeight: isActiveTrack ? 600 : undefined,
             }}
           >
-            {item.filename}
+            {item.title || item.filename}
           </div>
           <div
             style={{
@@ -190,6 +291,67 @@ export default function MediaCard({ config, item, bulkMode, selected, onToggle, 
               <VariantBadge key={b.flag} item={item} />
             ))}
           </div>
+          {isAudiobook && effectiveChapterCount > 0 && (
+            <div
+              style={{
+                fontSize: 12,
+                color: 'var(--text-muted)',
+                display: 'flex',
+                gap: 8,
+                marginTop: 3,
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                // Establishes a stacking context above the CardLink overlay
+                // (see the comment on the action-buttons row below) so the
+                // reset links here are actually clickable.
+                position: 'relative',
+              }}
+            >
+              <span>
+                {t('audiobooks.detail.chaptersCount', { count: effectiveChapterCount })}
+              </span>
+              {hasResumableProgress && (
+                <>
+                  <span>
+                    {t('audiobooks.detail.progressOfChapter', {
+                      percent: chapterPercent,
+                      chapter: chapterLabel(effectiveCurrentChapter),
+                    })}
+                  </span>
+                  {effectiveCurrentChapter && (
+                    <button
+                      type="button"
+                      onClick={resetChapterProgress}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--gold)',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      {t('audiobooks.detail.resetChapterProgress')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={markNotStarted}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--gold)',
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    {t('audiobooks.detail.markNotStarted')}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
         {!bulkMode && (
           // Positioned so the action buttons paint above the CardLink overlay.
@@ -211,7 +373,7 @@ export default function MediaCard({ config, item, bulkMode, selected, onToggle, 
             )}
             {isAudio && !item.is_missing && (
               <>
-                <AudioPlayer track={track} showPlayNext size={30} />
+                <AudioPlayer track={track} showPlayNext size={30} savedFraction={savedFraction} />
                 <AddToSoundboardButton track={track} size={30} />
               </>
             )}
@@ -314,6 +476,13 @@ export default function MediaCard({ config, item, bulkMode, selected, onToggle, 
           />
         )}
         {isAudio && !item.is_missing && (
+          // pointerEvents: 'none' here, not 'auto' — this div only exists to
+          // center the button, and 'auto' across its full inset:0 bounding
+          // box turned the *entire* thumbnail into a dead zone for the
+          // CardLink navigation underneath it (issue: clicking an audiobook's
+          // cover art didn't open the detail page, only its title did).
+          // AudioPlayer's own button re-enables pointer events on just
+          // itself, so the button stays clickable at its actual visual size.
           <div
             style={{
               position: 'absolute',
@@ -322,10 +491,10 @@ export default function MediaCard({ config, item, bulkMode, selected, onToggle, 
               alignItems: 'center',
               justifyContent: 'center',
               zIndex: 1,
-              pointerEvents: 'auto',
+              pointerEvents: 'none',
             }}
           >
-            <AudioPlayer track={track} />
+            <AudioPlayer track={track} savedFraction={savedFraction} />
           </div>
         )}
         {cornerBadges
@@ -360,7 +529,7 @@ export default function MediaCard({ config, item, bulkMode, selected, onToggle, 
             whiteSpace: 'nowrap',
           }}
         >
-          {item.filename}
+          {item.title || item.filename}
         </div>
         <div
           style={{
@@ -381,6 +550,26 @@ export default function MediaCard({ config, item, bulkMode, selected, onToggle, 
             <VariantBadge key={b.flag} item={item} />
           ))}
         </div>
+        {/* Condensed one-line status — the card is too narrow for the reset
+            actions the list row gets, so this is read-only; use the list view
+            or the detail page to reset progress. */}
+        {hasResumableProgress && (
+          <div
+            style={{
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              marginTop: 2,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {t('audiobooks.detail.progressCompact', {
+              percent: chapterPercent,
+              chapter: chapterLabel(effectiveCurrentChapter),
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

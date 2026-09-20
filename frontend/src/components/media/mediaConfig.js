@@ -1,4 +1,4 @@
-import { LuMap, LuUser, LuMusic, LuBox } from 'react-icons/lu'
+import { LuMap, LuUser, LuMusic, LuBox, LuHeadphones } from 'react-icons/lu'
 
 /**
  * Per-entity configuration for the shared media gallery components (MediaCard,
@@ -178,6 +178,57 @@ export const MEDIA_CONFIGS = {
       {
         flag: 'is_archive',
         // Absolute i18n key — the archive label is shared, not per-collection.
+        labelKey: 'common.archive',
+        label: 'archive',
+        color: 'rgba(90,110,160,0.9)',
+        corner: 'top-left',
+        inlineColor: '#8fa3cc',
+      },
+      {
+        flag: 'is_missing',
+        label: 'missing',
+        color: 'rgba(200,134,10,0.9)',
+        corner: 'bottom-left',
+        inlineColor: 'var(--warning)',
+      },
+    ],
+    titleFontSize: 14,
+    listIcon: { width: 40, height: 40 },
+  },
+  audiobook: {
+    type: 'audiobook',
+    collection: 'audiobooks',
+    i18n: 'audiobooks',
+    countKey: 'audiobookCount',
+    emptyFilterKey: 'noAudiobooksFilter',
+    emptyKey: 'noAudiobooks',
+    icon: LuHeadphones,
+    listUrl: '/audiobooks',
+    foldersUrl: '/audiobook-folders',
+    itemUrl: (id) => `/audiobooks/${id}`,
+    // Audiobooks use folder/embedded artwork in place of a generated
+    // thumbnail, same as Audio — there is no UI-uploaded cover (v1).
+    thumbnailUrl: (id) => `/audiobooks/${id}/artwork`,
+    thumbnailFlag: 'has_artwork',
+    detailPath: (id) => `/audiobooks/${id}`,
+    downloadType: 'audiobooks',
+    archiveType: 'audiobook_folder',
+    sessionKey: 'grimoire:audiobooks:collapsed',
+    sortOptions: ['title', 'name', 'duration', 'size'],
+    gridMin: { comfortable: '200px', compact: '140px' },
+    gridGap: 16,
+    thumb: { kind: 'square' },
+    // Inline play/pause button overlaid on the card artwork.
+    audioFileUrl: (id) => `/audiobooks/${id}/file`,
+    badges: [
+      {
+        flag: 'variant_count',
+        labelKey: 'common.versions',
+        label: 'versions',
+        footer: true,
+      },
+      {
+        flag: 'is_archive',
         labelKey: 'common.archive',
         label: 'archive',
         color: 'rgba(90,110,160,0.9)',

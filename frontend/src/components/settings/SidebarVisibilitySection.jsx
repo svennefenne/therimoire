@@ -15,6 +15,7 @@ export default function SidebarVisibilitySection() {
     { key: 'hide_tokens', label: t('appSettings.sidebarVisibility.hideTokens') },
     { key: 'hide_audio', label: t('appSettings.sidebarVisibility.hideAudio') },
     { key: 'hide_models', label: t('appSettings.sidebarVisibility.hideModels') },
+    { key: 'hide_audiobooks', label: t('appSettings.sidebarVisibility.hideAudiobooks') },
     { key: 'hide_campaigns', label: t('appSettings.sidebarVisibility.hideCampaigns') },
   ]
 
@@ -27,6 +28,7 @@ export default function SidebarVisibilitySection() {
           hide_tokens: d.hide_tokens,
           hide_audio: d.hide_audio,
           hide_models: d.hide_models,
+          hide_audiobooks: d.hide_audiobooks,
           hide_campaigns: d.hide_campaigns,
         })
       )
@@ -36,6 +38,7 @@ export default function SidebarVisibilitySection() {
           hide_tokens: false,
           hide_audio: false,
           hide_models: false,
+          hide_audiobooks: false,
           hide_campaigns: false,
         })
       )

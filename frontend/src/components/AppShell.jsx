@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import useScrollRestoration from '../hooks/useScrollRestoration'
+import useAudiobookHotkeys from '../hooks/useAudiobookHotkeys'
+import HotkeyFeedback from './audiobooks/HotkeyFeedback'
 import { useAuth } from '../context/AuthContext'
 import { UISettingsProvider } from '../context/UISettingsContext'
 import { useAudioPlayer } from '../context/AudioPlayerContext'
@@ -24,6 +26,8 @@ import AudioView from '../views/AudioView'
 import ModelsView from '../views/ModelsView'
 import ModelDetailView from './models/ModelDetailView'
 import AudioDetailView from './audio/AudioDetailView'
+import AudiobooksView from '../views/AudiobooksView'
+import AudiobookDetailView from './audiobooks/AudiobookDetailView'
 import SearchView from '../views/SearchView'
 import SettingsView from '../views/SettingsView'
 import FavoritesView from '../views/FavoritesView'
@@ -50,6 +54,7 @@ export default function AppShell() {
     hide_tokens: false,
     hide_audio: false,
     hide_models: false,
+    hide_audiobooks: false,
     hide_campaigns: false,
     // Assumed read-only until the server says otherwise, so the destructive
     // file actions cannot flash into a menu during the first render and be
@@ -88,6 +93,11 @@ export default function AppShell() {
   const mainRef = useScrollRestoration()
   const { queue } = useAudioPlayer()
   const playerActive = queue.length > 0
+  // Audiobooks keyboard shortcuts (±15s skip, volume, play/pause) while
+  // anywhere under /audiobooks (see the hook for the route/kind scoping) —
+  // mounted once here rather than per-view, plus the on-screen confirmation
+  // for whichever key was just pressed.
+  const { feedback: hotkeyFeedback } = useAudiobookHotkeys()
   const { open: soundboardOpen } = useSoundboard()
   // Keep the floating soundboard clear of the mobile nav bar and the player bar.
   const overlayOffset = (isMobile ? 64 : 0) + (playerActive ? PLAYER_HEIGHT : 0)
@@ -176,6 +186,7 @@ export default function AppShell() {
               <Route path="/tokens/:tokenId" element={<TokenDetailView />} />
               <Route path="/audio/:audioId" element={<AudioDetailView />} />
               <Route path="/models/:modelId" element={<ModelDetailView />} />
+              <Route path="/audiobooks/:audiobookId" element={<AudiobookDetailView />} />
               <Route path="*" element={<Navigate to="/campaigns" replace />} />
             </Routes>
           ) : (
@@ -209,6 +220,8 @@ export default function AppShell() {
               <Route path="/audio/:audioId" element={<AudioDetailView />} />
               <Route path="/models" element={<ModelsView />} />
               <Route path="/models/:modelId" element={<ModelDetailView />} />
+              <Route path="/audiobooks" element={<AudiobooksView />} />
+              <Route path="/audiobooks/:audiobookId" element={<AudiobookDetailView />} />
               <Route path="/search" element={<SearchView />} />
               <Route path="/favorites" element={<FavoritesView />} />
               <Route path="/tags" element={<TagsView />} />
@@ -238,6 +251,7 @@ export default function AppShell() {
         {isMobile && <MobileSidebar user={user} onLogout={logout} uiSettings={uiSettings} />}
 
         <GlobalAudioPlayer isMobile={isMobile} sidebarWidth={sidebarCollapsed ? 64 : 220} />
+        <HotkeyFeedback feedback={hotkeyFeedback} bottomOffset={overlayOffset} />
 
         {soundboardOpen ? (
           <SoundboardPanel bottomOffset={overlayOffset} />

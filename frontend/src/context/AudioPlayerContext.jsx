@@ -4,11 +4,46 @@ import useSessionState from '../hooks/useSessionState'
 
 const AudioPlayerContext = createContext(null)
 
+// Volume and playback rate are device/listener preferences, not part of a
+// playback session, so they persist in localStorage (survives a hard reload)
+// rather than the sessionStorage the queue itself uses.
+const VOLUME_KEY = 'grimoire:audio:volume'
+const RATE_KEY = 'grimoire:audio:rate'
+const MIN_RATE = 0.5
+const MAX_RATE = 2
+
+const readStoredNumber = (key, fallback, { min, max } = {}) => {
+  try {
+    const raw = localStorage.getItem(key)
+    if (raw === null) return fallback
+    const n = parseFloat(raw)
+    if (!Number.isFinite(n)) return fallback
+    if (min != null && n < min) return fallback
+    if (max != null && n > max) return fallback
+    return n
+  } catch {
+    return fallback
+  }
+}
+const writeStoredNumber = (key, n) => {
+  try {
+    localStorage.setItem(key, String(n))
+  } catch {}
+}
+
 // A track ref is the minimal shape we need to play + display a queue entry:
-//   { id, title?, artist?, artwork? }
+//   { id, title?, artist?, artwork?, kind? }
 // The audio file URL is derived from `id` at play time, so only the id is
 // required. Entries added with just an id (campaign resources, note embeds) are
-// lazily hydrated from GET /audio/:id so the player/queue show a rich label.
+// lazily hydrated from GET /audio/:id (or /audiobooks/:id) so the player/queue
+// show a rich label.
+
+// `kind` distinguishes an Audiobooks item from a regular Audio track — the two
+// are separate collections with separate API routes (see routers/audiobooks),
+// even though they share this one global player. Every track ref defaults to
+// 'audio' when `kind` is absent, so every existing call site (gallery cards,
+// campaign resources, the soundboard) keeps working unchanged.
+export const apiBaseFor = (track) => (track?.kind === 'audiobook' ? '/audiobooks' : '/audio')
 
 // A track needs hydrating only if it has an id but no display title yet and we
 // haven't already resolved (or failed) a fetch for it. Tracks added with a
@@ -36,6 +71,47 @@ export function AudioPlayerProvider({ children }) {
   const [duration, setDuration] = useState(0)
   const [expanded, setExpanded] = useState(false)
 
+  // Volume: 0..1, pushed onto the <audio> element by the effect below (see
+  // its comment for why that has to be an effect rather than a prop). Muting
+  // is "remember the volume, drop to 0" rather than a separate boolean, so
+  // there is only ever one source of truth for how loud playback actually is.
+  const [volume, setVolumeState] = useState(() => readStoredNumber(VOLUME_KEY, 1, { min: 0, max: 1 }))
+  const previousVolumeRef = useRef(volume > 0 ? volume : 1)
+
+  const setVolume = useCallback((v) => {
+    if (!Number.isFinite(v)) return
+    const clamped = Math.min(1, Math.max(0, v))
+    if (clamped > 0) previousVolumeRef.current = clamped
+    setVolumeState(clamped)
+    writeStoredNumber(VOLUME_KEY, clamped)
+  }, [])
+
+  const toggleMute = useCallback(() => {
+    setVolumeState((v) => {
+      if (v > 0) {
+        previousVolumeRef.current = v
+        writeStoredNumber(VOLUME_KEY, 0)
+        return 0
+      }
+      const restored = previousVolumeRef.current || 1
+      writeStoredNumber(VOLUME_KEY, restored)
+      return restored
+    })
+  }, [])
+
+  // Playback speed. Unlike volume this isn't a plain React-managed DOM prop,
+  // so it needs the effect below to push it onto the element — including
+  // whenever the track changes, since loading a new src can reset it.
+  const [rate, setRateState] = useState(() =>
+    readStoredNumber(RATE_KEY, 1, { min: MIN_RATE, max: MAX_RATE })
+  )
+  const setRate = useCallback((r) => {
+    if (!Number.isFinite(r)) return
+    const clamped = Math.min(MAX_RATE, Math.max(MIN_RATE, r))
+    setRateState(clamped)
+    writeStoredNumber(RATE_KEY, clamped)
+  }, [])
+
   const currentTrack = currentIndex >= 0 ? queue[currentIndex] : null
 
   // Chapters (M4A/M4B audiobooks — see AudioChapterList) aren't part of the
@@ -44,21 +120,36 @@ export function AudioPlayerProvider({ children }) {
   // current track rather than folded into the title/artist hydration below:
   // that effect runs eagerly for every queue entry to fill in display text,
   // where a chapter list is only ever needed for the one track in earshot.
+  //
+  // The same fetch also carries this user's saved playback position for an
+  // audiobook (`progress_seconds`, absent for plain Audio items) — one round
+  // trip rather than a second effect. `resumeSeconds` is `undefined` while
+  // the fetch for the *current* track id is still in flight (distinct from
+  // `null`, "fetched, nothing saved") — the resume effect below needs that
+  // three-way distinction to know when it's actually safe to decide.
   const [currentChapters, setCurrentChapters] = useState([])
+  const [resumeSeconds, setResumeSeconds] = useState(null)
   useEffect(() => {
     const id = currentTrack?.id
     if (!id) {
       setCurrentChapters([])
+      setResumeSeconds(null)
       return
     }
     let cancelled = false
+    setResumeSeconds(undefined)
     api
-      .get(`/audio/${id}`)
+      .get(`${apiBaseFor(currentTrack)}/${id}`)
       .then((data) => {
-        if (!cancelled) setCurrentChapters(data.chapters || [])
+        if (cancelled) return
+        setCurrentChapters(data.chapters || [])
+        setResumeSeconds(Number.isFinite(data.progress_seconds) ? data.progress_seconds : null)
       })
       .catch(() => {
-        if (!cancelled) setCurrentChapters([])
+        if (!cancelled) {
+          setCurrentChapters([])
+          setResumeSeconds(null)
+        }
       })
     return () => {
       cancelled = true
@@ -81,6 +172,58 @@ export function AudioPlayerProvider({ children }) {
   // metadata arrives, so the target time is stashed here and applied by
   // GlobalAudioPlayer's onLoadedMetadata instead of being set eagerly.
   const pendingSeek = useRef(null)
+
+  // Which track id an explicit seek (a chapter click via playTrackAt) was
+  // just requested for — the resume-on-play effect further down checks this
+  // instead of `pendingSeek` itself. `pendingSeek` is nulled synchronously
+  // inside onLoadedMetadata the moment it's applied, which can happen before
+  // the resume effect (driven by state: metadata-ready + the fetched saved
+  // position, whichever resolves second) ever gets to look at it — by the
+  // time that effect runs, `pendingSeek.current` would already read back
+  // null regardless of whether a seek was requested, making it useless as a
+  // "was this an explicit seek" flag for anything but the same tick. This
+  // ref is never cleared early, so it survives until the resume effect reads
+  // it no matter which of the two async signals (metadata / saved position)
+  // arrives first.
+  const skipResumeFor = useRef(null)
+
+  // `duration` (state) isn't reset when the current track changes, so a
+  // stale nonzero value from the *previous* track would otherwise let the
+  // resume effect below think metadata for the new one is already loaded —
+  // and calling seek() before the browser has actually parsed the new src's
+  // metadata gets silently reset to 0, the exact failure pendingSeek exists
+  // to dodge. Resetting both here on every track change keeps `duration` a
+  // reliable "is there loaded metadata for *this* track" signal once
+  // GlobalAudioPlayer's onLoadedMetadata sets it again for real.
+  useEffect(() => {
+    setDuration(0)
+    setCurrentTime(0)
+  }, [currentTrack?.id])
+
+  // Set by GlobalAudioPlayer's onLoadedMetadata, once real metadata for the
+  // currently-loading src has arrived — the other half of the "safe to
+  // resume" gate alongside `resumeSeconds` above.
+  const [metadataReadyId, setMetadataReadyId] = useState(null)
+  const markMetadataReady = useCallback((id) => setMetadataReadyId(id), [])
+
+  // Re-applied on every rate/volume change and every track change: the
+  // single <audio> element is reused across tracks, but loading a new src
+  // can reset playbackRate to 1 in some browsers — GlobalAudioPlayer's
+  // onLoadedMetadata reapplies both, as a belt-and-suspenders for that case.
+  // Volume in particular needs this rather than a `volume` prop on <audio>:
+  // unlike `muted`, React does not special-case `volume` as an IDL property
+  // for media elements, so passing it as a prop silently does nothing — the
+  // slider moved and the on-screen feedback updated, but actual playback
+  // stayed at whatever the element's default was.
+  useEffect(() => {
+    const el = audioRef.current
+    if (el) el.volume = volume
+  }, [volume, currentTrack?.id])
+
+  useEffect(() => {
+    const el = audioRef.current
+    if (el) el.playbackRate = rate
+  }, [rate, currentTrack?.id])
 
   const playQueue = useCallback(
     (tracks, startIndex = 0) => {
@@ -175,6 +318,29 @@ export function AudioPlayerProvider({ children }) {
     const el = audioRef.current
     if (el && Number.isFinite(t)) el.currentTime = t
   }, [])
+
+  // Resolves the resume-on-play decision for whichever track is current, the
+  // moment BOTH signals it needs are in: metadata has loaded for this track
+  // (`metadataReadyId`) and the saved-position lookup for it has resolved
+  // (`resumeSeconds` no longer `undefined`). Those two can arrive in either
+  // order — a slow network favours metadata-first, a fast one can flip it —
+  // so this effect is keyed off both and just waits for whichever settles
+  // last, rather than assuming one always precedes the other.
+  const resumeResolvedFor = useRef(null)
+  useEffect(() => {
+    const track = currentTrack
+    if (!track?.id) return
+    if (resumeResolvedFor.current === track.id) return
+    if (metadataReadyId !== track.id) return
+    if (resumeSeconds === undefined) return
+    resumeResolvedFor.current = track.id
+    if (skipResumeFor.current === track.id) return
+    // Don't resume into the last few seconds of a finished book — reads as
+    // starting over on a click rather than continuing.
+    if (resumeSeconds != null && resumeSeconds > 0 && duration > 0 && resumeSeconds < duration - 5) {
+      seek(resumeSeconds)
+    }
+  }, [currentTrack, metadataReadyId, resumeSeconds, duration, seek])
 
   // Relative jump (Spotify-style -15s/+15s), clamped to the track's bounds so
   // skipping near either end can't push currentTime negative or past a
@@ -280,10 +446,89 @@ export function AudioPlayerProvider({ children }) {
         if (el && el.paused) el.play().catch(() => {})
       } else {
         pendingSeek.current = Number.isFinite(time) ? time : null
+        // An explicit target time (a chapter click) always wins over a saved
+        // resume position for this track load — see skipResumeFor's comment.
+        skipResumeFor.current = track.id
         playQueue([track])
       }
     },
     [currentTrack, playQueue, seek]
+  )
+
+  // Mirrors `currentTime` without retriggering the effects below on every
+  // single onTimeUpdate tick — they only need the *latest* position at the
+  // moment they actually save, not a reason to re-run every fraction of a
+  // second.
+  const currentTimeRef = useRef(0)
+  useEffect(() => {
+    currentTimeRef.current = currentTime
+  }, [currentTime])
+
+  // Best-effort save of this user's playback position, for resume-on-play.
+  // Audiobooks only (see apiBaseFor) — regular Audio/ambience tracks have no
+  // per-user "where you left off" concept. Silently ignores failures, same as
+  // the chapters fetch above: a missed save just means the next one (or the
+  // periodic/pause/unmount saves below) catches up.
+  const saveProgress = useCallback((track, position) => {
+    if (!track?.id || apiBaseFor(track) !== '/audiobooks') return
+    if (!Number.isFinite(position) || position < 0) return
+    api.put(`/audiobooks/${track.id}/progress`, { position_seconds: position }).catch(() => {})
+  }, [])
+
+  // Periodic save while actually playing an audiobook, so a crash/reload
+  // loses at most ~15s of progress rather than everything since the last
+  // pause or track change.
+  useEffect(() => {
+    if (!isPlaying || apiBaseFor(currentTrack) !== '/audiobooks') return
+    const id = setInterval(() => {
+      saveProgress(currentTrack, currentTimeRef.current)
+    }, 15000)
+    return () => clearInterval(id)
+  }, [isPlaying, currentTrack, saveProgress])
+
+  // Save the instant playback pauses (covers the pause button, the sleep
+  // timer firing, and reaching the end of a non-repeating queue).
+  const wasPlayingRef = useRef(false)
+  useEffect(() => {
+    if (wasPlayingRef.current && !isPlaying) {
+      saveProgress(currentTrack, currentTimeRef.current)
+    }
+    wasPlayingRef.current = isPlaying
+  }, [isPlaying, currentTrack, saveProgress])
+
+  // Save whatever position the *previous* track was at the moment we leave
+  // it (queue advance, jumpTo, a fresh playQueue, or unmount) — the periodic
+  // timer alone would otherwise lose up to 15s on every track change.
+  // `currentTimeRef` still holds the outgoing track's last reported time
+  // here: the browser doesn't reset our `currentTime` state until the new
+  // track's own onTimeUpdate fires, which hasn't happened yet at cleanup.
+  useEffect(() => {
+    const track = currentTrack
+    if (!track?.id) return
+    return () => {
+      saveProgress(track, currentTimeRef.current)
+    }
+  }, [currentTrack, saveProgress])
+
+  // Reset this user's saved position for `audiobookId` ("Mark as not
+  // started" — see AudiobookDetailView). If it's the track currently loaded,
+  // also snaps local playback back to 0 rather than leaving the player
+  // sitting mid-book while the server says "not started".
+  const resetProgress = useCallback(
+    async (audiobookId) => {
+      if (!audiobookId) return
+      try {
+        await api.delete(`/audiobooks/${audiobookId}/progress`)
+      } catch {
+        // Best-effort — the detail view still updates its own local state.
+      }
+      if (currentTrack?.id === audiobookId) {
+        skipResumeFor.current = audiobookId
+        setResumeSeconds(null)
+        seek(0)
+      }
+    },
+    [currentTrack, seek]
   )
 
   const removeAt = useCallback(
@@ -374,11 +619,16 @@ export function AudioPlayerProvider({ children }) {
   useEffect(() => {
     const pending = queue.filter((t) => needsHydration(t) && !hydratingIds.current.has(t.id))
     if (pending.length === 0) return
-    const ids = [...new Set(pending.map((t) => t.id))]
+    // Kept per id (not just deduped ids) so the fetch can hit the right API
+    // base — an id is unique within its own collection, so the first ref seen
+    // for an id always carries that id's real kind.
+    const byId = new Map()
+    for (const t of pending) if (!byId.has(t.id)) byId.set(t.id, t)
+    const ids = [...byId.keys()]
     ids.forEach((id) => hydratingIds.current.add(id))
     ids.forEach((id) => {
       api
-        .get(`/audio/${id}`)
+        .get(`${apiBaseFor(byId.get(id))}/${id}`)
         .then((data) => {
           setQueue((prev) =>
             prev.map((t) =>
@@ -408,6 +658,8 @@ export function AudioPlayerProvider({ children }) {
     audioRef,
     playRequested,
     pendingSeek,
+    markMetadataReady,
+    resumeSeconds,
     queue,
     currentIndex,
     currentTrack,
@@ -424,6 +676,8 @@ export function AudioPlayerProvider({ children }) {
     activeChapterIndex,
     sleepTimer,
     sleepTimerRemaining,
+    volume,
+    rate,
     // actions
     playQueue,
     playNext,
@@ -436,6 +690,9 @@ export function AudioPlayerProvider({ children }) {
     toggleRepeat,
     seek,
     skipBy,
+    setVolume,
+    toggleMute,
+    setRate,
     playTrackAt,
     startSleepTimer,
     startSleepTimerEndOfChapter,
@@ -445,6 +702,7 @@ export function AudioPlayerProvider({ children }) {
     moveTrack,
     clear,
     toggleExpanded,
+    resetProgress,
     // selectors
     isCurrent,
     isPlayingId,
@@ -469,6 +727,8 @@ const NOOP_PLAYER = {
   audioRef: { current: null },
   playRequested: { current: false },
   pendingSeek: { current: null },
+  markMetadataReady: NOOP,
+  resumeSeconds: null,
   queue: [],
   currentIndex: -1,
   currentTrack: null,
@@ -485,6 +745,8 @@ const NOOP_PLAYER = {
   activeChapterIndex: -1,
   sleepTimer: null,
   sleepTimerRemaining: null,
+  volume: 1,
+  rate: 1,
   playQueue: NOOP,
   playNext: NOOP,
   addToQueue: NOOP,
@@ -496,6 +758,9 @@ const NOOP_PLAYER = {
   toggleRepeat: NOOP,
   seek: NOOP,
   skipBy: NOOP,
+  setVolume: NOOP,
+  toggleMute: NOOP,
+  setRate: NOOP,
   playTrackAt: NOOP,
   startSleepTimer: NOOP,
   startSleepTimerEndOfChapter: NOOP,
@@ -505,6 +770,7 @@ const NOOP_PLAYER = {
   moveTrack: NOOP,
   clear: NOOP,
   toggleExpanded: NOOP,
+  resetProgress: NOOP,
   isCurrent: () => false,
   isPlayingId: () => false,
   inQueue: () => false,

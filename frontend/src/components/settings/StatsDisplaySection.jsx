@@ -15,6 +15,7 @@ const STAT_KEYS = [
   { key: 'show_stat_tokens', labelKey: 'stats.tokens' },
   { key: 'show_stat_audio', labelKey: 'stats.audio' },
   { key: 'show_stat_models', labelKey: 'stats.models' },
+  { key: 'show_stat_audiobooks', labelKey: 'stats.audiobooks' },
   { key: 'show_stat_size', labelKey: 'stats.booksSize' },
   { key: 'show_stat_library_size', labelKey: 'stats.librarySize' },
 ]

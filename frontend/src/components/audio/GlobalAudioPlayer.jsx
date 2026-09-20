@@ -7,18 +7,24 @@ import {
   LuSkipForward,
   LuChevronLeft,
   LuChevronRight,
-  LuRotateCcw,
-  LuRotateCw,
   LuRepeat1,
   LuListMusic,
   LuX,
   LuMusic,
+  LuVolume2,
+  LuVolume1,
+  LuVolumeX,
 } from 'react-icons/lu'
+// Numbered rewind/forward glyphs so the ±15s buttons read as distinct from
+// the plain-chevron chapter-step buttons next to them — see the matching
+// swap in AudiobookDetailView and HotkeyFeedback.
+import { TbRewindBackward15, TbRewindForward15 } from 'react-icons/tb'
 import { mediaUrl } from '../../api'
 import { formatDuration } from '../../utils'
-import { useAudioPlayer } from '../../context/AudioPlayerContext'
+import { apiBaseFor, useAudioPlayer } from '../../context/AudioPlayerContext'
 import AudioQueuePanel from './AudioQueuePanel'
 import SleepTimerMenu from './SleepTimerMenu'
+import SpeedMenu from './SpeedMenu'
 
 const PLAYER_HEIGHT = 72
 
@@ -45,6 +51,7 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
     audioRef,
     playRequested,
     pendingSeek,
+    markMetadataReady,
     queue,
     currentIndex,
     currentTrack,
@@ -57,6 +64,8 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
     repeatOne,
     expanded,
     hasChapters,
+    volume,
+    rate,
     togglePlay,
     toggleRepeat,
     next,
@@ -65,11 +74,13 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
     prevChapter,
     seek,
     skipBy,
+    setVolume,
+    toggleMute,
     clear,
     toggleExpanded,
   } = player
 
-  const src = currentTrack ? mediaUrl(`/audio/${currentTrack.id}/file`) : null
+  const src = currentTrack ? mediaUrl(`${apiBaseFor(currentTrack)}/${currentTrack.id}/file`) : null
 
   // When the source changes and playback was requested (play/skip/jump), start
   // playing once the element has the new src.
@@ -87,7 +98,7 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
   // starts without a fetch stall. A <link rel="prefetch"> lets the browser pull
   // the file at idle priority; repeat-one has no "next", so skip it then.
   const nextTrack = !repeatOne && currentIndex >= 0 ? queue[currentIndex + 1] : null
-  const nextSrc = nextTrack ? mediaUrl(`/audio/${nextTrack.id}/file`) : null
+  const nextSrc = nextTrack ? mediaUrl(`${apiBaseFor(nextTrack)}/${nextTrack.id}/file`) : null
   useEffect(() => {
     if (!nextSrc) return
     const link = document.createElement('link')
@@ -149,6 +160,12 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
           onLoadedMetadata={(e) => {
             setDuration(e.currentTarget.duration || 0)
+            // Loading a new src can reset volume/playbackRate in some
+            // browsers (see the effects in AudioPlayerContext, which is
+            // also why these are set imperatively here rather than as
+            // React props) — reapply both once there's something loaded.
+            e.currentTarget.volume = volume
+            e.currentTarget.playbackRate = rate
             // A chapter click (playTrackAt) may have requested a starting
             // point before this src had metadata to seek within; apply it
             // now that the element actually has a seekable duration.
@@ -156,6 +173,10 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
               e.currentTarget.currentTime = pendingSeek.current
               pendingSeek.current = null
             }
+            // Tells AudioPlayerContext's resume-on-play effect that metadata
+            // for *this* track has actually loaded — see its own comment for
+            // why that can't just be inferred from `duration` changing.
+            if (currentTrack?.id) markMetadataReady(currentTrack.id)
           }}
           data-testid="global-audio-element"
         />
@@ -179,7 +200,7 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
           >
             {currentTrack.artwork ? (
               <img
-                src={mediaUrl(`/audio/${currentTrack.id}/artwork`)}
+                src={mediaUrl(`${apiBaseFor(currentTrack)}/${currentTrack.id}/artwork`)}
                 alt=""
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
@@ -226,7 +247,7 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
               title={t('audio.player.skipBack15')}
               style={iconBtn()}
             >
-              <LuRotateCcw size={16} />
+              <TbRewindBackward15 size={18} />
             </button>
           )}
           {hasChapters && (
@@ -270,7 +291,7 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
               title={t('audio.player.skipForward15')}
               style={iconBtn()}
             >
-              <LuRotateCw size={16} />
+              <TbRewindForward15 size={18} />
             </button>
           )}
           <button onClick={next} aria-label={t('audio.player.next')} style={iconBtn()}>
@@ -316,9 +337,41 @@ export default function GlobalAudioPlayer({ isMobile = false, sidebarWidth = 0 }
           </span>
         </div>
 
-        {/* Sleep timer + queue + close */}
+        {/* Volume */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <button
+            onClick={toggleMute}
+            aria-label={volume > 0 ? t('audio.player.mute') : t('audio.player.unmute')}
+            style={iconBtn()}
+          >
+            {volume === 0 ? (
+              <LuVolumeX size={18} />
+            ) : volume < 0.5 ? (
+              <LuVolume1 size={18} />
+            ) : (
+              <LuVolume2 size={18} />
+            )}
+          </button>
+          {/* The bar is already tight on mobile widths — the mute button alone
+              covers the keyboard-shortcut use case there. */}
+          {!isMobile && (
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={volume}
+              onChange={(e) => setVolume(parseFloat(e.target.value))}
+              aria-label={t('audio.player.volume')}
+              style={{ width: 80, accentColor: 'var(--gold)', cursor: 'pointer' }}
+            />
+          )}
+        </div>
+
+        {/* Sleep timer + speed + queue + close */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
           <SleepTimerMenu />
+          <SpeedMenu />
           <button
             onClick={toggleExpanded}
             aria-label={t('audio.player.toggleQueue')}

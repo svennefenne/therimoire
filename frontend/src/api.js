@@ -405,6 +405,7 @@ const BULK_PATHS = {
   token: '/tokens',
   audio: '/audio',
   model: '/models',
+  audiobook: '/audiobooks',
 }
 
 // Setting an image from one Grimoire already holds (issue #286). Banner, system
@@ -437,6 +438,7 @@ export const imageSources = {
       token: `/tokens/${id}/thumbnail`,
       audio: `/audio/${id}/artwork`,
       model: `/models/${id}/thumbnail`,
+      audiobook: `/audiobooks/${id}/artwork`,
     }
     return paths[resourceType] ? mediaUrl(paths[resourceType]) : null
   },
@@ -605,6 +607,7 @@ const BULK_FOLDER_PATHS = {
   token: '/token-folders',
   audio: '/audio-folders',
   model: '/model-folders',
+  audiobook: '/audiobook-folders',
 }
 
 export const addons = {

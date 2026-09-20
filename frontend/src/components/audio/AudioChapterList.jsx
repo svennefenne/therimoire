@@ -13,8 +13,12 @@ import { useAudioPlayer } from '../../context/AudioPlayerContext'
  * jumps straight to that timestamp via `playTrackAt`; the chapter containing
  * the current playback position is highlighted and kept in view while this
  * track is the one playing.
+ *
+ * `kind` ('audio' | 'audiobook') is threaded into the track ref handed to
+ * `playTrackAt` so the global player streams from the right API base — see
+ * `apiBaseFor` in AudioPlayerContext.
  */
-export default function AudioChapterList({ track }) {
+export default function AudioChapterList({ track, kind = 'audio' }) {
   const { t } = useTranslation()
   const { isCurrent, currentTime, playTrackAt } = useAudioPlayer()
 
@@ -33,7 +37,7 @@ export default function AudioChapterList({ track }) {
 
   const onSelect = (chapter) => {
     playTrackAt(
-      { id: track.id, title: track.title || track.filename, artwork: track.has_artwork },
+      { id: track.id, title: track.title || track.filename, artwork: track.has_artwork, kind },
       chapter.start
     )
   }
